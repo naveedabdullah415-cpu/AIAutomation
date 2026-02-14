@@ -1,0 +1,743 @@
+{
+  "name": "AI Chat Agent",
+  "nodes": [
+    {
+      "parameters": {
+        "options": {}
+      },
+      "id": "91f9e316-071a-4e18-84ef-461abec1e8e0",
+      "name": "When chat message received",
+      "type": "@n8n/n8n-nodes-langchain.chatTrigger",
+      "position": [
+        -1024,
+        1120
+      ],
+      "webhookId": "cdc03fce-33b6-4eed-86b5-f628994e5e31",
+      "typeVersion": 1.1
+    },
+    {
+      "parameters": {
+        "options": {
+          "systemMessage": "=You are a helpful assistant.\nCurrent timestamp is {{ $now }}",
+          "maxIterations": 15
+        }
+      },
+      "id": "f9d54466-6afe-4b3f-9968-e76b92aeb46f",
+      "name": "AI Agent",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "position": [
+        -800,
+        1120
+      ],
+      "typeVersion": 1.7
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "mode": "list",
+          "value": "gpt-4o",
+          "cachedResultName": "gpt-4o"
+        },
+        "options": {
+          "temperature": 0.2
+        }
+      },
+      "id": "e3d15fd7-8735-4963-bd6a-f67e3688870c",
+      "name": "OpenAI Chat Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "position": [
+        -880,
+        1360
+      ],
+      "typeVersion": 1.2
+    },
+    {
+      "parameters": {},
+      "id": "8b689396-e669-47fb-a6d4-36d7c5222038",
+      "name": "Calculator",
+      "type": "@n8n/n8n-nodes-langchain.toolCalculator",
+      "position": [
+        -208,
+        1520
+      ],
+      "typeVersion": 1
+    },
+    {
+      "parameters": {
+        "jsCode": "// Ensure there's at least one input item.\nif (!items || items.length === 0) {\n  throw new Error(\"No input items found.\");\n}\n\n// Our input is expected to have a 'data' property containing the JSONP string.\nconst input = items[0].json;\n\nif (!input.data) {\n  throw new Error(\"Input JSON does not have a 'data' property.\");\n}\n\nconst rawData = input.data;\n\n// Use a regex to extract the JSON content from the Google Visualization JSONP response.\nconst regex = /google\\.visualization\\.Query\\.setResponse\\((.*)\\);?$/s;\nconst match = rawData.match(regex);\n\nif (!match) {\n  throw new Error(\"Input data does not match the expected Google Visualization JSONP format.\");\n}\n\nconst jsonString = match[1];\n\n// Parse the extracted JSON string.\nlet parsed;\ntry {\n  parsed = JSON.parse(jsonString);\n} catch (error) {\n  throw new Error(\"Failed to parse JSON: \" + error.message);\n}\n\n// Verify that the parsed JSON has the expected 'table' structure with 'cols' and 'rows'.\nif (!parsed.table || !Array.isArray(parsed.table.cols) || !Array.isArray(parsed.table.rows)) {\n  throw new Error(\"Parsed JSON does not have the expected 'table' structure with 'cols' and 'rows'.\");\n}\n\nconst cols = parsed.table.cols;\nconst rows = parsed.table.rows;\n\n// Helper function to convert date string from \"Date(YYYY,M,D)\" to \"YYYY-MM-DD\"\nfunction formatDate(dateStr) {\n  const match = dateStr.match(/^Date\\((\\d+),(\\d+),(\\d+)\\)$/);\n  if (!match) return dateStr;\n  const year = parseInt(match[1], 10);\n  const month = parseInt(match[2], 10) + 1; // JavaScript months are 0-indexed\n  const day = parseInt(match[3], 10);\n  // Format with leading zeros\n  return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;\n}\n\n// Map each row into an object using the column labels as keys.\nconst newItems = rows.map(row => {\n  const obj = {};\n  cols.forEach((col, index) => {\n    let value = row.c && row.c[index] ? row.c[index].v : null;\n    // If the column type is \"date\" and the value is a string that looks like \"Date(YYYY,M,D)\"\n    if (col.type === \"date\" && typeof value === \"string\") {\n      value = formatDate(value);\n    }\n    obj[col.label] = value;\n  });\n  return { json: obj };\n});\n\n// Return the new array of items.\nreturn newItems;\n"
+      },
+      "id": "e39d3f04-0007-46a7-b128-aed6add9907d",
+      "name": "Code",
+      "type": "n8n-nodes-base.code",
+      "position": [
+        -208,
+        2096
+      ],
+      "typeVersion": 2
+    },
+    {
+      "parameters": {
+        "workflowInputs": {
+          "values": [
+            {
+              "name": "start_date"
+            },
+            {
+              "name": "end_date"
+            },
+            {
+              "name": "status"
+            }
+          ]
+        }
+      },
+      "id": "3e6ca1fd-6402-4a02-b49a-83cadfd51b04",
+      "name": "When Executed by Another Workflow",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "position": [
+        -768,
+        2096
+      ],
+      "typeVersion": 1.1
+    },
+    {
+      "parameters": {
+        "name": "records_by_date_and_or_status",
+        "description": "Use this tool to get records filtered by date. You can also filter by status at the same time, if you want.",
+        "workflowId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "a2BIIjr2gLBay06M",
+          "cachedResultName": "Template | Your first AI Data Analyst"
+        },
+        "workflowInputs": {
+          "value": {
+            "status": "={{ $fromAI(\"status\", \"Status of the transaction. Can be Completed, Refund or Error. Leave empty if you don't need this now.\", \"string\") }}",
+            "end_date": "={{ $fromAI(\"end_date\", \"End date in format YYYY-MM-DD\", \"string\") }}",
+            "start_date": "={{ $fromAI(\"start_date\", \"Start date in format YYYY-MM-DD\", \"string\") }}"
+          },
+          "schema": [
+            {
+              "id": "start_date",
+              "type": "string",
+              "display": true,
+              "required": false,
+              "displayName": "start_date",
+              "defaultMatch": false,
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "end_date",
+              "type": "string",
+              "display": true,
+              "required": false,
+              "displayName": "end_date",
+              "defaultMatch": false,
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "status",
+              "type": "string",
+              "display": true,
+              "removed": false,
+              "required": false,
+              "displayName": "status",
+              "defaultMatch": false,
+              "canBeUsedToMatch": true
+            }
+          ],
+          "mappingMode": "defineBelow",
+          "matchingColumns": [],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        }
+      },
+      "id": "212bf8bf-2da2-4f37-8ac1-00da06428a9e",
+      "name": "Records by date",
+      "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
+      "position": [
+        -32,
+        1344
+      ],
+      "typeVersion": 2
+    },
+    {
+      "parameters": {
+        "aggregate": "aggregateAllItemData",
+        "options": {}
+      },
+      "id": "6d354353-7a83-4979-b214-da9300506561",
+      "name": "Aggregate",
+      "type": "n8n-nodes-base.aggregate",
+      "position": [
+        240,
+        2096
+      ],
+      "typeVersion": 1
+    },
+    {
+      "parameters": {
+        "content": "To send all the items back to the AI, we need to finish with everything aggregated into one single item.\n\nOtherwise it will respond with one item at a time, and the AI will only get the first item that arrives.",
+        "height": 400,
+        "width": 220,
+        "color": 7
+      },
+      "id": "cd05b88d-3ba9-40e9-a210-617f16ba8b8f",
+      "name": "Sticky Note",
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        176,
+        1856
+      ],
+      "typeVersion": 1
+    },
+    {
+      "parameters": {
+        "content": "This node sends a custom HTTP Request to the Google Sheets API.\n\nFiltering by date range in the Google Sheets API is very complicated.\n\nThis node solves that problem.\n\nBut doing the same in a database is much simpler. A tool could do it without needing a sub-workflow.",
+        "height": 400,
+        "width": 300,
+        "color": 7
+      },
+      "id": "90ad1770-fbda-402e-89d9-d9f2e06c21cc",
+      "name": "Sticky Note1",
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -592,
+        1856
+      ],
+      "typeVersion": 1
+    },
+    {
+      "parameters": {
+        "content": "The output from this complex request is also messy.\n\nSo we use some code generated by ChatGPT to transform the data into JSON objects.",
+        "height": 400,
+        "width": 220,
+        "color": 7
+      },
+      "id": "14a37c96-d395-4851-b0a1-eea5408f023c",
+      "name": "Sticky Note2",
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -272,
+        1856
+      ],
+      "typeVersion": 1
+    },
+    {
+      "parameters": {
+        "url": "https://docs.google.com/spreadsheets/d/18A4d7KYrk8-uEMbu7shoQe_UIzmbTLV1FMN43bjA7qc/gviz/tq",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleSheetsOAuth2Api",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "sheet",
+              "value": "Sheet1"
+            },
+            {
+              "name": "tq",
+              "value": "=SELECT * WHERE A >= DATE \"{{ $json.start_date }}\" AND A <= DATE \"{{ $json.end_date }}\""
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "775324a4-e4f9-4bf8-ac20-bb52b247950e",
+      "name": "Google Sheets request",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [
+        -480,
+        2096
+      ],
+      "typeVersion": 4.2,
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "6qxRGxG6FXYDtG1c",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "descriptionType": "manual",
+        "toolDescription": "Find transactions by product.\nOur products are:\n- Widget A\n- Widget B\n- Widget C\n- Widget D",
+        "documentId": {
+          "__rl": true,
+          "value": "1T0mV6u_2qCtkaJuvQBRR_N23slhEa27wyPNg83yDfVA",
+          "mode": "list",
+          "cachedResultName": "Sales - Mock data",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1T0mV6u_2qCtkaJuvQBRR_N23slhEa27wyPNg83yDfVA/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "list",
+          "value": "gid=0",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/18A4d7KYrk8-uEMbu7shoQe_UIzmbTLV1FMN43bjA7qc/edit#gid=0",
+          "cachedResultName": "Sheet1"
+        },
+        "filtersUI": {
+          "values": [
+            {
+              "lookupColumn": "Product",
+              "lookupValue": "={{ $fromAI(\"product_name\", \"The product name\", \"string\") }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "a2ec13de-203c-47cb-ad24-47f643c81e8f",
+      "name": "Get transactions by product name",
+      "type": "n8n-nodes-base.googleSheetsTool",
+      "position": [
+        -32,
+        1136
+      ],
+      "typeVersion": 4.5,
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "6qxRGxG6FXYDtG1c",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "descriptionType": "manual",
+        "toolDescription": "Only use this as last resort, because it will pull all data at once.",
+        "documentId": {
+          "__rl": true,
+          "value": "1T0mV6u_2qCtkaJuvQBRR_N23slhEa27wyPNg83yDfVA",
+          "mode": "list",
+          "cachedResultName": "Sales - Mock data",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1T0mV6u_2qCtkaJuvQBRR_N23slhEa27wyPNg83yDfVA/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Sheet1",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1T0mV6u_2qCtkaJuvQBRR_N23slhEa27wyPNg83yDfVA/edit#gid=0"
+        },
+        "options": {}
+      },
+      "id": "d7ce9cc4-8826-4a79-a1e8-3ddc2804a5eb",
+      "name": "Get all transactions",
+      "type": "n8n-nodes-base.googleSheetsTool",
+      "position": [
+        -208,
+        1344
+      ],
+      "typeVersion": 4.5,
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "6qxRGxG6FXYDtG1c",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "content": "## Some questions to try\nThere's a red button on this page that you can click to chat with the AI.\n\nTry asking it these questions:\n\n- How many refunds in January and what was the amount refunded?\n\n- How many successful sales did we have in January 2025 and what was the final income of those?\n\n- What is the most frequent reason for refunds?",
+        "height": 340,
+        "width": 320,
+        "color": 4
+      },
+      "id": "6aa0b14c-38a1-482b-a5fb-30c7c57bd59a",
+      "name": "Sticky Note3",
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -1408,
+        1120
+      ],
+      "typeVersion": 1
+    },
+    {
+      "parameters": {
+        "content": "## Copy this Sheets file to your Google Drive\nhttps://docs.google.com/spreadsheets/d/18A4d7KYrk8-uEMbu7shoQe_UIzmbTLV1FMN43bjA7qc/edit?gid=0#gid=0",
+        "width": 400,
+        "color": 4
+      },
+      "id": "61bdaffa-f2e2-4f2e-9899-912f11a6f5ae",
+      "name": "Sticky Note4",
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -1824,
+        1120
+      ],
+      "typeVersion": 1
+    },
+    {
+      "parameters": {
+        "content": "### 👈\nThe Calculator is a tool that allows an agent to run mathematical calculations.",
+        "height": 140,
+        "width": 200,
+        "color": 7
+      },
+      "id": "29618584-c4e8-4003-b073-5b37515cdcc5",
+      "name": "Sticky Note5",
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -112,
+        1520
+      ],
+      "typeVersion": 1
+    },
+    {
+      "parameters": {
+        "content": "### How to connect to Google Sheets?\nTo connect your n8n to your Google Sheets you're gonna need Google OAuth credentials\n\nSee documentation **[here](https://docs.n8n.io/integrations/builtin/credentials/google/oauth-single-service/)**",
+        "width": 400,
+        "color": 4
+      },
+      "id": "7652b007-7907-4f53-bea5-5f532f01f9cd",
+      "name": "Sticky Note6",
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -1824,
+        1296
+      ],
+      "typeVersion": 1
+    },
+    {
+      "parameters": {
+        "content": "## 👆\nYou can use many models here, including the free Google Gemini options.\n\nMake sure to test it thoroughly. Some models are better for data analysis.",
+        "height": 260,
+        "width": 170,
+        "color": 7
+      },
+      "id": "c207cd4c-b293-4cf4-a1f6-42fbaf1a002b",
+      "name": "Sticky Note7",
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -928,
+        1472
+      ],
+      "typeVersion": 1
+    },
+    {
+      "parameters": {
+        "content": "## 👆\nThis is a short term memory. It will remember the 5 previous interactions during the chat",
+        "height": 260,
+        "width": 150,
+        "color": 7
+      },
+      "id": "519807bb-728b-47c9-ace0-d40fd9673d2e",
+      "name": "Sticky Note8",
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -704,
+        1472
+      ],
+      "typeVersion": 1
+    },
+    {
+      "parameters": {},
+      "id": "f1b34aac-6354-4b3a-a6f2-dba2e8a1f3c4",
+      "name": "Buffer Memory",
+      "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+      "position": [
+        -688,
+        1360
+      ],
+      "typeVersion": 1.3
+    },
+    {
+      "parameters": {
+        "content": "The **AI Tools Agent** has access to all the tools at the same time. It uses the name and description to decide when to use each tool.\n\nNotice I'm using `$fromAI` function in all of them.\n\nSee documentations **[here](https://docs.n8n.io/advanced-ai/examples/using-the-fromai-function/)**",
+        "height": 180,
+        "width": 340,
+        "color": 7
+      },
+      "id": "9ecf7514-3b07-4e07-be98-7ef51ca67a3e",
+      "name": "Sticky Note9",
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        128,
+        1136
+      ],
+      "typeVersion": 1
+    },
+    {
+      "parameters": {
+        "content": "## 👈 This is a special tool\nIt is used to call another workflow.\nThis concept is called sub-workflow.\n\nSee documentation [here](https://docs.n8n.io/flow-logic/subworkflows/).\n\nInstead of running a completely separate workflow, we are calling the one below.\n\nIt's contained in the same workflow, but we are using the trigger to define it will run only when called by this tool.",
+        "height": 320,
+        "width": 340,
+        "color": 7
+      },
+      "id": "414c9591-1699-4492-8e56-afc0f262b3c6",
+      "name": "Sticky Note11",
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        128,
+        1344
+      ],
+      "typeVersion": 1
+    },
+    {
+      "parameters": {
+        "content": "# Sub-workflow\nThe AI can call this sub-workflow anytime,\nby using the **Records by date** tool.\n\nThe sub-workflow automatically return\n the result of the last executed node to the AI.",
+        "height": 520,
+        "width": 1380,
+        "color": 7
+      },
+      "id": "c67a207d-e23e-45c0-8b5d-c26c2de55373",
+      "name": "Sticky Note12",
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -928,
+        1792
+      ],
+      "typeVersion": 1
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "version": 2,
+            "leftValue": "",
+            "caseSensitive": true,
+            "typeValidation": "strict"
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "e50da873-bbbd-41d3-a418-83193907977c",
+              "operator": {
+                "type": "string",
+                "operation": "contains"
+              },
+              "leftValue": "={{ $json.Status }}",
+              "rightValue": "={{ $('When Executed by Another Workflow').item.json.status }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "24872f8b-2d2f-4b7f-bef1-0898e2ecb40b",
+      "name": "Filter by status",
+      "type": "n8n-nodes-base.filter",
+      "position": [
+        16,
+        2096
+      ],
+      "typeVersion": 2.2
+    },
+    {
+      "parameters": {
+        "descriptionType": "manual",
+        "toolDescription": "Find transactions by status",
+        "documentId": {
+          "__rl": true,
+          "value": "1T0mV6u_2qCtkaJuvQBRR_N23slhEa27wyPNg83yDfVA",
+          "mode": "list",
+          "cachedResultName": "Sales - Mock data",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1T0mV6u_2qCtkaJuvQBRR_N23slhEa27wyPNg83yDfVA/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "list",
+          "value": "gid=0",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/18A4d7KYrk8-uEMbu7shoQe_UIzmbTLV1FMN43bjA7qc/edit#gid=0",
+          "cachedResultName": "Sheet1"
+        },
+        "filtersUI": {
+          "values": [
+            {
+              "lookupColumn": "Status",
+              "lookupValue": "={{ $fromAI(\"transaction_status\", \"Transaction status can be Refund, Completed or Error\", \"string\") }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "8fd0558d-33ff-4c7c-b149-23e301d496ff",
+      "name": "Get transactions by status",
+      "type": "n8n-nodes-base.googleSheetsTool",
+      "position": [
+        -208,
+        1136
+      ],
+      "typeVersion": 4.5
+    },
+    {
+      "parameters": {
+        "content": "## Change the URL of the Sheets file in all the Sheets tools 👇",
+        "width": 300,
+        "color": 4
+      },
+      "id": "1bc2643e-748f-4c8d-9d83-1fd8d9aae726",
+      "name": "Sticky Note13",
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -224,
+        912
+      ],
+      "typeVersion": 1
+    },
+    {
+      "parameters": {
+        "content": "## 👆 Change the URL of the Sheets file",
+        "height": 100,
+        "width": 260,
+        "color": 4
+      },
+      "id": "833a3537-66e4-4b6f-b6d4-dd5cb481bf70",
+      "name": "Sticky Note14",
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -544,
+        2272
+      ],
+      "typeVersion": 1
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Code": {
+      "main": [
+        [
+          {
+            "node": "Filter by status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Calculator": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Buffer Memory": {
+      "ai_memory": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Records by date": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter by status": {
+      "main": [
+        [
+          {
+            "node": "Aggregate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get all transactions": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Sheets request": {
+      "main": [
+        [
+          {
+            "node": "Code",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get transactions by status": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "When chat message received": {
+      "main": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get transactions by product name": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "When Executed by Another Workflow": {
+      "main": [
+        [
+          {
+            "node": "Google Sheets request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "82925eac-518e-4a62-bab6-cdfde383bfed",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "d32218395e2af597be20e7d4b2263caac89b96808d850618d46f64eee344bd4f"
+  },
+  "id": "i91nRxq5BoA4CV7K",
+  "tags": []
+}
