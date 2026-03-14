@@ -17,11 +17,6 @@ Basic understanding of n8n workflow concepts
 API keys for any services you want to integrate (OpenAI, Anthropic, etc.)
 Installation
 
-Clone this repository
-
-bash   git clone https://github.com/yourusername/n8n-ai-workflows.git
-   cd n8n-ai-workflows
-
 Import workflows into n8n
 
 Open your n8n instance
