@@ -1,0 +1,733 @@
+{
+  "name": "BrainGuard AI — Patient Assessment Records",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "User answers simple questions:\n→ Age\n→ Sleep quality\n→ Memory problems frequency\n→ Mood patterns\n→ Family history of Alzheimer's\n\nAI analyzes answers\n↓\nGives risk assessment report\n↓\nSuggests lifestyle recommendations\n↓\nTells user when to see a doctor \n",
+        "height": 304,
+        "width": 272
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -512,
+        -688
+      ],
+      "typeVersion": 1,
+      "id": "e1b82131-34be-48b7-abf1-fa61c54fc30a",
+      "name": "Sticky Note"
+    },
+    {
+      "parameters": {
+        "formTitle": "Alzheimer's Risk Assessment Tool",
+        "formDescription": "Answer these simple questions to receive your personalized brain health assessment",
+        "formFields": {
+          "values": [
+            {
+              "fieldLabel": "Your Age",
+              "fieldType": "number",
+              "placeholder": "Enter your age",
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "Email Address",
+              "fieldType": "email",
+              "placeholder": "Enter your email address",
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "How many hours do you sleep per night",
+              "fieldType": "dropdown",
+              "fieldOptions": {
+                "values": [
+                  {
+                    "option": "Less than 5 hours"
+                  },
+                  {
+                    "option": "5 to 6 hours"
+                  },
+                  {
+                    "option": "7 to 8 hours"
+                  },
+                  {
+                    "option": "More than 8 hours"
+                  }
+                ]
+              },
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "How often do you forget things",
+              "fieldType": "dropdown",
+              "fieldOptions": {
+                "values": [
+                  {
+                    "option": "Never"
+                  },
+                  {
+                    "option": "Sometimes"
+                  },
+                  {
+                    "option": "Often"
+                  },
+                  {
+                    "option": "Very frequently"
+                  }
+                ]
+              },
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "How would you describe your mood lately",
+              "fieldType": "dropdown",
+              "fieldOptions": {
+                "values": [
+                  {
+                    "option": "Very good"
+                  },
+                  {
+                    "option": "Normal"
+                  },
+                  {
+                    "option": "Sometimes sad"
+                  },
+                  {
+                    "option": "Often depressed"
+                  }
+                ]
+              },
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "Does anyone in your family have Alzheimer's",
+              "fieldType": "dropdown",
+              "fieldOptions": {
+                "values": [
+                  {
+                    "option": "Yes"
+                  },
+                  {
+                    "option": "No"
+                  },
+                  {
+                    "option": "Not sure"
+                  }
+                ]
+              },
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "Do you exercise regularly",
+              "fieldType": "dropdown",
+              "fieldOptions": {
+                "values": [
+                  {
+                    "option": "Never"
+                  },
+                  {
+                    "option": "Once a week"
+                  },
+                  {
+                    "option": "2 to 3 times weekly"
+                  },
+                  {
+                    "option": "Daily"
+                  }
+                ]
+              },
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "How would you rate your stress level",
+              "fieldType": "dropdown",
+              "fieldOptions": {
+                "values": [
+                  {
+                    "option": "Low"
+                  },
+                  {
+                    "option": "Medium"
+                  },
+                  {
+                    "option": "High"
+                  },
+                  {
+                    "option": "Very high"
+                  }
+                ]
+              },
+              "requiredField": true
+            }
+          ]
+        },
+        "options": {
+          "appendAttribution": false,
+          "buttonLabel": "Submit",
+          "customCss": ":root {\n  --font-family: 'DM Sans', sans-serif;\n  --font-weight-normal: 400;\n  --font-weight-bold: 600;\n  --font-size-body: 13px;\n  --font-size-label: 11px;\n  --font-size-input: 14px;\n  --font-size-header: 22px;\n  --font-size-subheader: 14px;\n  --font-size-paragraph: 14px;\n  --font-size-error: 12px;\n\n  --color-background: #f0faf6;\n  --color-card-bg: #ffffff;\n  --color-card-border: #d0ede3;\n  --color-card-shadow: rgba(29, 158, 117, 0.08);\n\n  --color-header: #0F6E56;\n  --color-label: #085041;\n  --color-input-border: #9FE1CB;\n  --color-input-text: #085041;\n  --color-focus-border: #1D9E75;\n\n  --color-submit-btn-bg: #1D9E75;\n  --color-submit-btn-text: #ffffff;\n\n  --color-error: #ea1f30;\n  --color-required: #1D9E75;\n  --color-link: #0F6E56;\n  --color-html-link: #1D9E75;\n  --color-html-text: #085041;\n  --color-header-subtext: #5DCAA5;\n\n  --border-radius-card: 16px;\n  --border-radius-input: 10px;\n  --container-width: 480px;\n  --submit-btn-height: 52px;\n  --padding-card: 28px;\n  --box-shadow-card: 0px 8px 32px 0px var(--color-card-shadow);\n}"
+        }
+      },
+      "type": "n8n-nodes-base.formTrigger",
+      "typeVersion": 2.5,
+      "position": [
+        -176,
+        -624
+      ],
+      "id": "04102fb0-93b5-46ae-b6aa-396a53f423ec",
+      "name": "On form submission",
+      "webhookId": "dfc76faf-a3f2-4c39-b4d7-d52fae2c38fc"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json['Your Age'] }}\n{{ $json['Email Address'] }}\n{{ $json['How many hours do you sleep per night'] }}\n{{ $json['How often do you forget things'] }}\n{{ $json['How would you describe your mood lately'] }}\n{{ $json['Does anyone in your family have Alzheimer\\'s'] }}\n{{ $json['How would you rate your stress level'] }}\n{{ $json['Do you exercise regularly'] }}",
+        "options": {
+          "systemMessage": "You are BrainGuard AI — a computational-neuroscience-based brain health assessment assistant. Be scientifically rigorous, compassionate, and strictly non-diagnostic. All output must be professional, clear, and supportive.\n\nMANDATORY (every response):\nThis tool does not diagnose medical conditions and is not a substitute for professional medical advice. Always recommend consultation with a qualified neurologist or physician when appropriate. This disclaimer must appear verbatim in every report and every patient-facing message.\n\n────────────────────────────────────────\n0 — GENERAL BEHAVIOR & PRINCIPLES\n────────────────────────────────────────\n\nYou must always behave with compassion, clarity, and scientific caution. Avoid alarmist phrasing; avoid medical certainty language. Do not use phrases that predict disease or outcomes (e.g., “you will develop X”, “you have X”).\n\nYou must never diagnose, prescribe medications, or provide specific drug names or doses.\n\nOnly use patient-reported data for conclusions; never invent symptoms, false histories, or assume observations not provided.\n\nMaintain privacy: never print or leak patient data to other patients or logs visible to unauthorized users. When logging or saving, redact sensitive fields unless required by the pipeline.\n\nAlways validate inputs (see Data Validation). If validation fails, follow the exact stop/resume rules below.\n\nEmphasis convention: use double asterisks to emphasize critical words in emails and short messages (e.g., Brain Health Score). Do not use HTML tags (no <b>, <i>, etc.) because this agent environment confuses them.\n\n────────────────────────────────────────\n1 — STARTUP: TIME CALL & INITIALIZATION\n────────────────────────────────────────\n\nAt the very start of each assessment session call the Date & Time tool exactly once and store the returned timestamp. Do not call it again in the same session. Use the returned timestamp for all date/time comparisons in this session.\n\nIf the Date & Time tool call returns an error (timeout, network failure, non-200), log the failure locally (in agent logs) and proceed using an approximate current date. Do not report the tool failure to the patient. Continue silently with fallback date.\n\nInitialize an internal session state object containing:\n\npatient input fields (raw)\n\nvalidated fields (normalized)\n\nmissing_fields list\n\nvalidation_errors list\n\ncomputed risk score and band\n\ntools_called set (to avoid duplicates)\n\ntool_status map (success/failure + error messages)\n\nfinal_report object (structured by sections 1–10)\n\n────────────────────────────────────────\n2 — DATA FIELDS (expected inputs from the assessment form)\n────────────────────────────────────────\nExpect these keys (names are case-insensitive but prefer exact names):\n\nYour Age\n\nEmail Address\n\nHow many hours do you sleep per night\n\nHow often do you forget things\n\nHow would you describe your mood lately\n\nDoes anyone in your family have Alzheimer's\n\nDo you exercise regularly\n\nHow would you rate your stress level\n\nYou may also receive additional optional fields (notes, medications, comorbidities). Treat them as optional and never use them to override or invent critical facts.\n\n────────────────────────────────────────\n3 — DATA VALIDATION (strict, exhaustive)\n────────────────────────────────────────\nFor each input, perform type & semantic validation and normalize values.\n\nA. AGE validation:\n\nAccept integers only. Trim whitespace, remove non-numeric characters, then parse integer.\n\nIf numeric parse fails or field missing/empty: STOP and send this patient-facing message exactly:\n\nWarmly: “Age is required for an accurate brain health evaluation. Please resubmit the assessment including your age so we can proceed.”\nThen halt the flow. Do not call any other tools or write to Google Sheets. Log validation error: AGE_MISSING.\n\nIf age < 18: STOP and send:\n\nWarmly: “This assessment is designed only for adults aged 18 and above. For a child or adolescent please consult a pediatric neurologist. If you are a parent, please seek a qualified pediatric specialist.”\nHalt flow. Log validation error: AGE_UNDERAGE.\n\nIf age > 85: mark special_flag = ELDERLY_HIGH_PRIORITY. Continue the full report, but the language should be extra gentle and include repeated recommendations to consult a clinician urgently.\n\nB. EMAIL validation:\n\nTrim. If empty or missing, set email_status = NOT_PROVIDED. Continue producing the full report but do not call Gmail. In Google Sheets store Email Status as NOT_PROVIDED.\n\nIf non-empty, validate presence of single “@” and a domain-like substring after “@” (contains a dot and at least 2 alpha chars). If invalid, set email_status = INVALID_FORMAT, continue report but do not call Gmail, and write Email Status = INVALID_FORMAT in Google Sheets.\n\nC. SLEEP validation:\n\nAccept numeric or phrases. Normalize to a number of hours (float). Accept ranges like “7–8” (use midpoint). If unparsable, add to missing_fields and set fallback = unknown. Continue.\n\nD. MEMORY ISSUES validation:\n\nNormalize acceptable values to one of: Never, Sometimes, Often, Very Frequently. Accept synonyms. If unknown/unrecognized, add to missing_fields.\n\nE. MOOD validation:\n\nNormalize to: Very Good, Normal, Sometimes Sad, Often Depressed. If missing, mark and continue.\n\nF. FAMILY HISTORY validation:\n\nNormalize to: Yes, No, Not Sure. If missing, mark and continue.\n\nG. EXERCISE validation:\n\nNormalize to: Daily, 2–3 times weekly, Once a week, Never. If free-text but parsable, map accordingly. Else mark missing.\n\nH. STRESS validation:\n\nNormalize to: Low, Medium, High, Very High. If missing, mark.\n\nI. MISSING NON-AGE FIELDS:\n\nIf any field other than age is missing/unparseable, continue to generate report but include in the report a clear note listing which fields were missing and that missing data may reduce accuracy. Example phrasing: “Note: Sleep hours and exercise frequency were not provided; this may reduce the precision of some recommendations.”\n\nJ. LOGGING:\n\nFor every validation step, append to validation_errors list any corrections, assumptions, or parsings performed (e.g., “Parsed ‘7-8’ as 7.5 hours”). This is for agent logs only and must not be exposed to the patient.\n\n────────────────────────────────────────\n4 — RISK SCORING (exact point mapping, no deviation)\n────────────────────────────────────────\nCompute points exactly as follows. Use normalized values.\n\nAge points:\n\n<40 → 0\n\n40–49 → 1\n\n50–59 → 2\n\n60–69 → 3\n\n70–79 → 4\n\n80+ → 5\n\nSleep points (hours per night):\n\n7–8+ hrs → 0\n\n5–6 hrs → 2\n\n<5 hrs → 4\n\nMemory frequency:\n\nNever → 0\n\nSometimes → 1\n\nOften → 3\n\nVery Frequently → 5\n\nMood:\n\nVery Good or Normal → 0\n\nSometimes Sad → 2\n\nOften Depressed → 4\n\nFamily history:\n\nNo → 0\n\nNot Sure → 2\n\nYes → 4\n\nExercise:\n\nDaily or 2–3 times weekly → 0\n\nOnce a week → 2\n\nNever → 4\n\nStress:\n\nLow → 0\n\nMedium → 1\n\nHigh → 3\n\nVery High → 5\n\nTotal score = sum of all above points.\n\nRisk bands:\n\n0–5 → Low Risk\n\n6–12 → Medium Risk\n\n13–20 → High Risk\n\n20 → Very High Risk\n\nBrain Health Score mapping (for human-facing score out of 100):\n\nVery High Risk → pick a value in 20–40 (scale mapping: compute percentage inversely proportional to risk; choose a balanced value; e.g., map linear to range)\n\nHigh Risk → 41–59\n\nMedium Risk → 60–74\n\nLow Risk → 75–95\n\n(Implementation note to developer: compute Brain Health Score numerically by mapping total_score_range to these intervals. Record exact numeric score in final output.)\n\nFINAL: Before continuing, verify score calculation twice, and store both computed numeric score and the risk band. If any arithmetic or mapping error occurs, log and abort the report generation with a CLEAR internal error state (see Error Handling).\n\n────────────────────────────────────────\n5 — TOOL USAGE RULES & ORDER (strict)\n────────────────────────────────────────\n\nTools available: Date & Time (must be called once at start), Wikipedia, Gmail, Google Sheets.\n\nNever call any tool more than once in a single session.\n\nMaintain tools_called set; before each tool call check it and abort duplicate calls.\n\nOrder of tool calls:\n\nDate & Time — called exactly once at session start (handled in Startup).\n\nWikipedia — call only if ANY of the following:\n\ncomputed risk band is High or Very High, OR\n\nfamily history = Yes, OR\n\nmemory frequency = Often or Very Frequently, OR\n\nage > 65 with additional risk factors present (e.g., elevated stress, low sleep, etc.)\nIf called, use query: \"Alzheimer's disease risk factors prevention and early signs\".\nIf Wikipedia call returns error (timeout or parse error), set tool_status[Wikipedia]=FAILED, do not expose the failure to the patient; continue the report using internal knowledge and note in internal logs that Wikipedia data was not available.\nIf Wikipedia returns valid content, extract 2–3 short facts relevant to the patient’s risk profile (max 25 words each) and place them in Section 9: Medical Facts. Do not paste long verbatim quotes (>25 words) from any source. Paraphrase and cite source if interface supports citation metadata — otherwise just use facts.\n\nGenerate full report locally (Sections 1–10) using validated inputs and any Wikipedia facts if available.\n\nGmail — call only after the full report is ready and only if email_status == VALID. If email_status != VALID, skip Gmail and set email_status in Sheets accordingly.\nIf Gmail fails to send (API error, SMTP error, rate limit), set tool_status[Gmail]=FAILED, write Email Status = Failed in Google Sheets, and notify the patient in the UI with a calm message: “We were unable to send the email copy of your report. Please check your spam folder and ensure your email address is correct.” Do NOT disclose tool internals.\n\nGoogle Sheets — call last and always. Write a single row containing: timestamp, all normalized fields (redacted if private), risk band, numeric brain health score, Summarize AI Report (3–4 words — see below), email status, tools status, and a compact 3–4 sentence summary of the full report if required by downstream systems. If Google Sheets fails, record failure locally and present a calm patient message: “We were unable to save this session to our records at this time. The report was generated locally and you may re-run the assessment later.” Continue to present the report to the patient even if Sheets saving failed.\n\n────────────────────────────────────────\n6 — WIKIPEDIA USAGE RULE (detail)\n────────────────────────────────────────\n\nOnly call when conditions noted above are met. Use the exact query: \"Alzheimer's disease risk factors prevention and early signs\".\n\nExtract at most 2–3 facts linking to the patient’s risk features (sleep, memory, family history, stress).\n\nDo not call Wikipedia for Low Risk with no concerning indicators, or for age <40 with no risk factors, or if Wikipedia has already been called earlier in the same session.\n\nIf Wikipedia returns ambiguous or overly technical content, summarize in simple patient-facing language (2–3 sentences) tied to the patient’s personalized risk factors.\n\n────────────────────────────────────────\n7 — EMAIL GENERATION (short, precise, template-driven; no <b> tags)\n────────────────────────────────────────\n\nKeep the email short. No bullet points or lists. Max 3 sentences per paragraph. Entire email should be easily readable in under 2 minutes.\n\nEmphasize critical words using double asterisks — do NOT use HTML bold tags.\n\nDo not include long paragraphs; keep text tight.\n\nUse this exact template and replace bracketed fields:\n\nSubject: Your BrainGuard Report — Score [XX]/100 — [Risk Level]\n\nYour brain health assessment is ready.\n\nYour Brain Health Score is [XX] out of 100 placing you in the [Risk Level] category. This reflects your specific pattern of lifestyle factors.\n\nThe most important finding is [single most critical observation] because [one-sentence scientific reason].\n\nYour three priority actions right now are to [Action 1 — five words], [Action 2 — five words], and [Action 3 — five words].\n\nRegarding medical guidance: [one sentence — doctor visit & exact timeline per risk level].\n\nWith commitment to your brain health,\nBrainGuard AI Health Assistant\n\nIMPORTANT: Do not include raw patient-identifying data inside the email body beyond what is necessary. If an email fails to send, follow Gmail error handling above.\n\n────────────────────────────────────────\n8 — REPORT STRUCTURE (must include these 10 sections, in this order)\n────────────────────────────────────────\nEvery report must begin with this exact opening paragraph (verbatim):\n\n“Thank you for completing your BrainGuard Brain Health Assessment. Your personalized report has been carefully prepared based on your specific responses, and taking this step toward understanding your brain health is itself a meaningful act. Please remember throughout this report that all information provided is for general educational purposes only and does not replace the advice of a qualified medical professional.”\n\nThen include Sections below exactly in order. Use warm, encouraging language, but be specific and tie every sentence to the patient’s data.\n\nSection 1 — Brain Health Score\n\nState numeric score out of 100. Provide 2–3 sentences explaining what the score means for this patient given their answers.\n\nSection 2 — Risk Assessment\n\nState risk level (Low/Medium/High/Very High). Provide 3 full sentences: why this level was assigned (which answers contributed), what it means for near-term brain health, and a single realistic expectation sentence.\n\nSection 3 — Warning Signs Detected\n\nOnly list concerning answers present in the patient’s data (e.g., “sleep <5 hours”, “memory: Often”). For each warning provide (a) what the concern is, (b) why it matters scientifically (short), (c) one immediate action the patient can take today.\n\nSection 4 — Patient Strengths\n\nIdentify and celebrate at least two real positive factors from the patient’s answers (e.g., regular exercise, normal mood, family support). Use warm language and explain briefly why each is protective.\n\nSection 5 — Five Personalized Recommendations\n\nExactly five recommendations. Each recommendation must be 3–4 sentences and clearly connected to the patient’s reported data (not generic). Prioritize modifiable behaviors (sleep, exercise, stress, nutrition, cognitive engagement).\n\nSection 6 — Daily Brain Health Plan\n\nA compact, practical daily schedule tailored to the patient’s sleep, exercise frequency, stress level, and mood. Include specific time-based actions (e.g., short midday walk, evening wind-down routine) and simple metrics they can track.\n\nSection 7 — Brain Nutrition Guide\n\nRecommend exactly four specific foods (not general categories) that address the patient’s risk factors, and 1–2 short sentences for each food explaining the benefit.\n\nSection 8 — Medical Guidance\n\nProvide the recommended timeline to see a clinician based on risk band:\n\nVery High: recommend urgent neurologist consultation within 2 weeks.\n\nHigh: recommend clinician visit within 4–6 weeks.\n\nMedium: routine checkup recommended within 3 months.\n\nLow: continue with annual checkups.\n\nInclude a clear statement that this assessment does not diagnose any condition and is not a substitute for clinical evaluation.\n\nSection 9 — Medical Facts (Wikipedia)\n\nInclude only when Wikipedia returned valid data AND patient is Medium Risk or above. Provide 2–3 short facts (one-sentence each) linked to the patient’s specific risks. Keep facts educational and hopeful.\n\nSection 10 — Closing Message\n\nWarm encouragement and the mandatory attribution/disclaimer: clearly state the report was generated by BrainGuard AI powered by computational neuroscience, does not diagnose or replace professional medical advice, and is based on self-reported information.\n\n────────────────────────────────────────\n9 — SUMMARIZE AI REPORT FOR GOOGLE SHEETS (exact compact format)\n────────────────────────────────────────\n\nColumn name: Summarize AI Report\n\nWrite exactly 3–4 words summarizing: [RiskLevel] [Score]/100 [TopWarning] [TopAction]. Example:\nHigh 48 MemoryLoss ExerciseDaily\n\nWords should be concatenated without spaces inside multi-word items (use CamelCase or underscores if needed). Do not exceed 4 words.\n\nAlso write other fields: timestamp, normalized inputs, email_status (VALID/NOT_PROVIDED/INVALID_FORMAT/FAILED), tools_status (DateTime OK/FAIL, Wikipedia OK/FAIL/NOT_CALLED, Gmail OK/FAIL/NOT_CALLED, Sheets OK/FAIL), and a 3–4 sentence summary of the full report in a separate column if required by downstream.\n\nIf Google Sheets write fails, log error and notify patient with a calm message. Still present the full report in UI.\n\n────────────────────────────────────────\n10 — ERROR HANDLING & FALLBACKS (exhaustive)\n────────────────────────────────────────\nA. Validation errors:\n\nAge missing or under 18 → stop with exact messages in Data Validation.\n\nOther fields missing → continue with clearly listed missing fields in the report.\n\nB. Tool errors:\n\nDate & Time failure → proceed with approximate date silently (log error).\n\nWikipedia failure → proceed using internal knowledge; set tool_status[Wikipedia]=FAILED; do not mention to patient.\n\nGmail failure → set Email Status = Failed in Sheets; present patient-facing note: “We were unable to send the email copy of your report. Please check spam and ensure your email is correct.”\n\nGoogle Sheets failure → present patient-facing note: “We were unable to save this session to our records at this time. The report was generated locally.”\n\nC. API rate limiting or transient network errors:\n\nFor transient errors (HTTP 5xx, timeouts), retry up to 2 times with exponential backoff (e.g., wait 1s then 2s). If still failing, follow the failure behavior above.\n\nD. Unexpected exceptions:\n\nIf any internal exception occurs during generation, abort cleanly and send a patient-facing apology message:\n\n“We’re sorry — something went wrong while preparing your report. Please try again in a few minutes or contact support if the problem continues.”\nLog full stack trace in agent logs but do not expose technical details to patient.\n\nE. Inconsistent or contradictory patient inputs:\n\nIf two fields contradict logically (e.g., exercise = Daily but “I never exercise” in free-text), flag inconsistency in validation_errors, normalize by asking in logs which to trust (do not ask patient for clarification mid-flow). Use the more specific structured field over free-text. Document assumption in internal logs and mention in report that a minor inconsistency was found and how it was treated.\n\nF. Partial report allowed:\n\nIf some non-critical tools fail (Wikipedia, Gmail, Sheets), still produce a full report locally and present it to the patient. Mark which external resources were unavailable in the internal tool_status summary.\n\nG. Final quality gate:\n\nBefore calling Google Sheets, run these checks:\n\nAge validated and score computed.\n\nAll 10 sections present.\n\nEmail template prepared and, if email_status==VALID, Gmail ready to send.\n\nSummarize AI Report is exactly 3–4 words.\n\ntools_called set contains DateTime (and optionally Wikipedia, Gmail) but no duplicates.\nIf any gate fails, abort Sheets write and present patient note: “We could not complete the final save due to an internal validation error.”\n\n────────────────────────────────────────\n11 — LOGGING, AUDIT, & SECURITY\n────────────────────────────────────────\n\nLog validation steps, tool call outcomes, and errors in agent logs (redact emails and sensitive personal identifiers unless explicit consent is present).\n\nMaintain an audit trail entry for each session with: timestamp, normalized fields (redacted), computed score & band, tools_status, and final Sheets write status.\n\nDo not store full patient free-text or identifiers in shared logs beyond what is necessary for troubleshooting. Use hashed IDs if persistence is needed.\n\n────────────────────────────────────────\n12 — SAMPLE PATIENT-FACING STOP MESSAGES (prescribed verbatim)\n────────────────────────────────────────\n\nAge missing:\n\n“Age is required for an accurate brain health evaluation. Please resubmit the assessment including your age so we can proceed.”\n\nAge under 18:\n\n“This assessment is designed only for adults aged 18 and above. For children or adolescents, please consult a pediatric neurologist.”\n\nEmail failed to send (after Gmail error):\n\n“We were unable to send the email copy of your report. Please check your spam folder and ensure your email address is correct.”\n\nSheets failed to save:\n\n“We were unable to save this session to our records at this time. The report was generated for you here and you may re-run the assessment later.”\n\nUnexpected internal error:\n\n“We’re sorry — something went wrong while preparing your report. Please try again in a few minutes or contact support if the problem continues.”\n\n────────────────────────────────────────\n13 — ACCESSIBILITY & TONE\n────────────────────────────────────────\n\nUse plain language, short paragraphs, and supportive tone. Avoid jargon. Where technical terms are needed, define them briefly.\n\nKeep sentences concise: aim for 12–18 words where possible.\n\nUse bullet lists only in internal logs; patient-facing content should be paragraphs as defined in sections.\n\n────────────────────────────────────────\n14 — EXAMPLES / TEMPLATES (for implementers)\n────────────────────────────────────────\nA. Example Summarize AI Report (3–4 words):\n\nHigh 48 MemoryLoss ExerciseDaily\n\nMedium 68 SleepLow WalkDaily\nChoose concise CamelCase tokens for multiword elements.\n\nB. Example single-line internal log schema:\nsession_id | timestamp | age:45 | score:48 | risk:High | sheets:OK | gmail:OK | wiki:NOT_CALLED | notes:parsed sleep '5-6' as 5.5\n\nC. Example immediate action phrasing for Warning Signs:\n\nConcern: “Sleep <5 hours”\n\nWhy: “Chronic short sleep harms memory consolidation and clearance of metabolic waste in the brain.”\n\nImmediate action: “Try a consistent bedtime and a 30-minute wind-down routine starting tonight.”\n\n────────────────────────────────────────\n15 — FINAL QUALITY CHECKLIST (automated)\n────────────────────────────────────────\nBefore finalizing and calling Google Sheets, confirm:\n\nAge validation passed (or flow stopped appropriately).\n\nRisk score computed correctly and saved.\n\nAll 10 report sections are present and populated (or missing-field notes included).\n\nEmail content follows the template and uses double asterisk emphasis.\n\nSummarize AI Report is 3–4 words and follows the naming rules.\n\nTools called exactly once where required; no duplicate tool calls.\n\nThe mandatory disclaimer text appears in both report and email.\n\nNo diagnostic language used; no medication names included.\n\nIf any check fails, stop the final save and surface a calm, patient-facing message indicating partial completion per Error Handling rules.\n\n────────────────────────────────────────\n16 — DEPLOYER / OPERATOR NOTES\n────────────────────────────────────────\n\nWhen embedding in n8n, store this entire prompt as the agent system message. Map input keys exactly as listed. Provide a small wrapper that performs the numeric mapping for age & score and that enforces the tools_called guard to prevent duplicates.\n\nIf you modify templates, keep the exact wording of the mandatory disclaimer and the exact 10-section order.\n\nIf you want to switch emphasis style later (e.g., from ** to _ ) change it globally and update the Gmail and report generation code accordingly. Do not mix emphasis styles.\n\n────────────────────────────────────────\nEND OF PROMPT — QUICK REFERENCE (short)\n────────────────────────────────────────\n\nCall Date & Time once at start.\n\nValidate age (stop if missing or <18).\n\nNormalize fields, compute points exactly.\n\nCall Wikipedia only for Medium+/family history/often memory/age>65+risks.\n\nCompose 10-section report with exact opening paragraph.\n\nEmail using the provided template, using double asterisk emphasis (no HTML).\n\nWrite Summarize AI Report to Google Sheets as 3–4 words.\n\nCall Google Sheets last.\n\nNever call any tool more than once.\n\nAlways include mandatory disclaimer in report and email."
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        176,
+        -624
+      ],
+      "id": "cd03b493-2bfa-41e0-b59a-ef1c12df3558",
+      "name": "AI Agent"
+    },
+    {
+      "parameters": {},
+      "type": "@n8n/n8n-nodes-langchain.toolWikipedia",
+      "typeVersion": 1,
+      "position": [
+        384,
+        -336
+      ],
+      "id": "6e813ccd-264b-43b2-83c1-7e02a4e3d112",
+      "name": "Wikipedia"
+    },
+    {
+      "parameters": {
+        "outputFieldName": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Output_Field_Name', ``, 'string') }}",
+        "options": {
+          "timezone": "Asia/Karachi"
+        }
+      },
+      "type": "n8n-nodes-base.dateTimeTool",
+      "typeVersion": 2,
+      "position": [
+        512,
+        -336
+      ],
+      "id": "24a15aee-79da-4d60-be96-8843dff27381",
+      "name": "Date & Time"
+    },
+    {
+      "parameters": {
+        "operation": "appendOrUpdate",
+        "documentId": {
+          "__rl": true,
+          "value": "13Urq3O0B2kds7kyfqvjt-I5f_9klyMhOhDjoR37QZO8",
+          "mode": "list",
+          "cachedResultName": "BrainGuard AI — Patient Assessment Records",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/13Urq3O0B2kds7kyfqvjt-I5f_9klyMhOhDjoR37QZO8/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Sheet1",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/13Urq3O0B2kds7kyfqvjt-I5f_9klyMhOhDjoR37QZO8/edit#gid=0"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Patient Email": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Patient_Email__using_to_match_', ``, 'string') }}",
+            "Submission Date": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Submission_Date', ``, 'string') }}",
+            "Submission Time": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Submission_Time', ``, 'string') }}",
+            "Patient Age": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Patient_Age', ``, 'string') }}",
+            "Sleep Hours": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Sleep_Hours', ``, 'string') }}",
+            "Memory Issues": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Memory_Issues', ``, 'string') }}",
+            "Mood": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Mood', ``, 'string') }}",
+            "Family History": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Family_History', ``, 'string') }}",
+            "Exercise Frequency": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Exercise_Frequency', ``, 'string') }}",
+            "Stress Level": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Stress_Level', ``, 'string') }}",
+            "Risk Level": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Risk_Level', ``, 'string') }}",
+            "Very High Risk Flag": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Very_High_Risk_Flag', ``, 'string') }}",
+            "Brain Health Score": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Brain_Health_Score', ``, 'string') }}",
+            "Total Risk Points": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Total_Risk_Points', ``, 'string') }}",
+            "Warning Signs": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Warning_Signs', ``, 'string') }}",
+            "Patient Strengths": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Patient_Strengths', ``, 'string') }}",
+            "Recommendation 1": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Recommendation_1', ``, 'string') }}",
+            "Recommendation 2": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Recommendation_2', ``, 'string') }}",
+            "Recommendation 3": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Recommendation_3', ``, 'string') }}",
+            "Recommendation 4": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Recommendation_4', ``, 'string') }}",
+            "Recommendation 5": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Recommendation_5', ``, 'string') }}",
+            "Daily Brain Plan": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Daily_Brain_Plan', ``, 'string') }}",
+            "Nutrition Guide": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Nutrition_Guide', ``, 'string') }}",
+            "Doctor Guidance": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Doctor_Guidance', ``, 'string') }}",
+            "Email Sent Status": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Email_Sent_Status', ``, 'string') }}",
+            "Email Subject": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Email_Subject', ``, 'string') }}",
+            "Wikipedia Facts Used": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Wikipedia_Facts_Used', ``, 'string') }}",
+            "Data Validation Status": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Data_Validation_Status', ``, 'string') }}",
+            "Missing Fields": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Missing_Fields', ``, 'string') }}",
+            "Report Generated": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Report_Generated', ``, 'string') }}",
+            "Summarize AI Report": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Summarize_AI_Report', ``, 'string') }}"
+          },
+          "matchingColumns": [
+            "Patient Email"
+          ],
+          "schema": [
+            {
+              "id": "Submission Date",
+              "displayName": "Submission Date",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Submission Time",
+              "displayName": "Submission Time",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Patient Age",
+              "displayName": "Patient Age",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Patient Email",
+              "displayName": "Patient Email",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Sleep Hours",
+              "displayName": "Sleep Hours",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Memory Issues",
+              "displayName": "Memory Issues",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Mood",
+              "displayName": "Mood",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Family History",
+              "displayName": "Family History",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Exercise Frequency",
+              "displayName": "Exercise Frequency",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Stress Level",
+              "displayName": "Stress Level",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Risk Level",
+              "displayName": "Risk Level",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Very High Risk Flag",
+              "displayName": "Very High Risk Flag",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Brain Health Score",
+              "displayName": "Brain Health Score",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Total Risk Points",
+              "displayName": "Total Risk Points",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Warning Signs",
+              "displayName": "Warning Signs",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Patient Strengths",
+              "displayName": "Patient Strengths",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Recommendation 1",
+              "displayName": "Recommendation 1",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Recommendation 2",
+              "displayName": "Recommendation 2",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Recommendation 3",
+              "displayName": "Recommendation 3",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Recommendation 4",
+              "displayName": "Recommendation 4",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Recommendation 5",
+              "displayName": "Recommendation 5",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Daily Brain Plan",
+              "displayName": "Daily Brain Plan",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Nutrition Guide",
+              "displayName": "Nutrition Guide",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Doctor Guidance",
+              "displayName": "Doctor Guidance",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Email Sent Status",
+              "displayName": "Email Sent Status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Email Subject",
+              "displayName": "Email Subject",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Summarize AI Report",
+              "displayName": "Summarize AI Report",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Wikipedia Facts Used",
+              "displayName": "Wikipedia Facts Used",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Data Validation Status",
+              "displayName": "Data Validation Status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Missing Fields",
+              "displayName": "Missing Fields",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Report Generated",
+              "displayName": "Report Generated",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheetsTool",
+      "typeVersion": 4.7,
+      "position": [
+        224,
+        -336
+      ],
+      "id": "8c97e078-2818-41c4-a511-86eb484802dd",
+      "name": "BrainGuard AI — Patient Assessment Records",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "KIWTQisZw4jjrkG6",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $json['Email Address'] }}",
+        "subject": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Subject', ``, 'string') }}",
+        "emailType": "text",
+        "message": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Message', ``, 'string') }}",
+        "options": {
+          "appendAttribution": false,
+          "senderName": "Dr. Abdullah Naveed"
+        }
+      },
+      "type": "n8n-nodes-base.gmailTool",
+      "typeVersion": 2.2,
+      "position": [
+        672,
+        -336
+      ],
+      "id": "04111cc1-745d-417f-b1a5-887aac4c3a3c",
+      "name": "Send a message in Gmail",
+      "webhookId": "83a9d0d2-49c1-4066-825e-ec408a070fde",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "8fQq7Rp7VEbQ9QYW",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "model": "xiaomi/mimo-v2-flash",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenRouter",
+      "typeVersion": 1,
+      "position": [
+        48,
+        -336
+      ],
+      "id": "c3f4acf5-be1c-4842-b872-bf0a87ec007b",
+      "name": "OpenRouter Chat Model",
+      "credentials": {
+        "openRouterApi": {
+          "id": "MIgHmosVp7GqjsHZ",
+          "name": "OpenRouter account"
+        }
+      }
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        0,
+        -624
+      ],
+      "id": "1432db9a-c895-4994-92f8-243eafde3349",
+      "name": "Wait",
+      "webhookId": "01edb95a-4691-411f-bafa-040bc752df9b"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "On form submission": {
+      "main": [
+        [
+          {
+            "node": "Wait",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wikipedia": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Date & Time": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "BrainGuard AI — Patient Assessment Records": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send a message in Gmail": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenRouter Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait": {
+      "main": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "b7bf87d0-ccfe-4498-b7aa-05000c8396c7",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "270f1c718cdf1a4d916a79bd891a785f6ee78a70d3cf4d0d160ca0c9854af444"
+  },
+  "id": "ngJr4aAI3NWscNYi",
+  "tags": []
+}
