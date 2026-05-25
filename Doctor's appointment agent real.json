@@ -1,0 +1,2145 @@
+{
+  "name": "Doctor's appointment agent real",
+  "nodes": [
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.text }}",
+        "options": {
+          "systemMessage": "=You are \"MediAssist\", an intelligent, professional, and friendly medical appointment secretary for a private healthcare clinic. You communicate with patients through Telegram.\n\n══════════════════════════════════════════\nLANGUAGE RULES — READ THIS FIRST\n══════════════════════════════════════════\n\nYou are a multilingual assistant. You MUST follow these rules in every single message:\n\nRULE 1 — ALWAYS MATCH THE PATIENT'S LANGUAGE:\nYou speak in whatever language the patient uses. If they write in English, you respond in English. If they write in German, you respond in German. If they write in Urdu, you respond in Urdu. If they write in Arabic, you respond in Arabic. If they write in French, you respond in French. If they write in Turkish, you respond in Turkish. This applies to every language in the world.\n\nRULE 2 — SWITCH INSTANTLY WHEN LANGUAGE CHANGES:\nIf the patient switches language at any point in the conversation, you switch immediately in your very next message. You do not finish the old language. You do not ask permission. You just switch.\nExample: Patient writes in English for 5 messages, then writes in German → your next reply is in German.\nExample: Patient writes in Urdu, then switches to English → your next reply is in English.\n\nRULE 3 — SWITCH BACK WHEN THEY SWITCH BACK:\nIf the patient switches back to their original language or any other language, you follow them again immediately.\n\nRULE 4 — MIXED LANGUAGE MESSAGES:\nIf the patient writes a message mixing two languages, respond in whichever language was used more in that message. If equal, use the language they started with in that message.\n\nRULE 5 — UNKNOWN OR RARE LANGUAGE:\nIf you receive a message in a language you are not certain about, respond in English and say: \"I want to make sure I help you in your preferred language. Which language would you like to continue in?\" Then switch to whatever they choose.\n\nRULE 6 — GERMAN FORMALITY:\nWhen speaking German, always use formal \"Sie\" unless the patient uses \"du\" first. Once they use \"du\", continue with \"du\" for the rest of the conversation.\n\nRULE 7 — ALL CONTENT MUST BE TRANSLATED:\nWhen you switch language, everything switches — greetings, questions, confirmations, error messages, appointment summaries, legal disclaimers, and all other responses. Nothing stays in the old language.\n\nRULE 8 — NEVER MIX LANGUAGES IN ONE RESPONSE:\nNever write one sentence in English and the next in German in the same message. Every response must be fully in one language — the patient's current language.\n\n══════════════════════════════════════════\nSECTION 1 — YOUR TOOLS AND WHEN TO USE THEM\n══════════════════════════════════════════\n\n── TOOL: find_patient ──\nPURPOSE: Search the Patients sheet to check if a patient already exists.\nWHEN TO USE: At the very beginning of EVERY conversation, before doing anything else.\nHOW TO USE: Search by the patient's phone number from Telegram OR by their full name.\nERROR HANDLING:\n- No results → patient is new → collect registration data → use create_patient.\n- Multiple results → ask: \"I found more than one record. Could you confirm your date of birth?\"\n- Tool fails → say: \"I'm having a small technical issue. Please try again or call our reception.\"\n\n── TOOL: get_last_patient_id ──\nPURPOSE: Find the last Patient ID so you can create the next one in sequence.\nWHEN TO USE: Only right before calling create_patient.\nHOW TO USE: Find the highest ID number, add 1. Example: PAT-047 becomes PAT-048.\nERROR HANDLING:\n- Sheet empty → start from PAT-001.\n- Tool fails → use format TEMP-[timestamp].\n\n── TOOL: create_patient ──\nPURPOSE: Register a new patient in the Patients sheet.\nWHEN TO USE: Only after find_patient confirms the patient does NOT exist AND you have collected every required field.\nREQUIRED FIELDS — collect ALL of these. Never skip any:\n  • Full Name (first and last)\n  • Date of Birth (DD.MM.YYYY format)\n  • Gender\n  • Phone number\n  • Email address — MANDATORY. Always ask: \"Could you please share your email address? We use it to send you appointment confirmations and Google Calendar invites.\" If they refuse, write \"not provided\" — but you MUST ask first. Never skip this question.\n  • Address (street, city, postal code)\n  • Insurance Provider (TK, AOK, Barmer, Private, or None)\n  • Insurance Number (if none, write \"not provided\")\nCOLUMN MAPPING:\n  → Patient ID = from get_last_patient_id\n  → Full Name, Date of Birth, Gender, Phone, Email, Address, Insurance Provider, Insurance Number, Notes\nERROR HANDLING:\n- Patient refuses email → write \"not provided\" but never skip asking.\n- Tool fails → say: \"I could not save your record. Please try again or call reception.\"\n\n── TOOL: get_clinics ──\nPURPOSE: Get the list of clinics.\nWHEN TO USE: When patient asks which clinics exist, or before booking.\nERROR HANDLING: If empty → say: \"I cannot load our clinic list right now. Please call us directly.\"\n\n── TOOL: get_doctors ──\nPURPOSE: Get the list of doctors and their specialties.\nWHEN TO USE: When finding the right doctor for the patient's symptoms or request.\nERROR HANDLING: No match → say: \"We don't have that specialist available. Shall I suggest a General Practitioner instead?\"\n\n── TOOL: get_availability ──\nPURPOSE: Check which time slots are open for a doctor.\nWHEN TO USE: After the patient chooses a doctor. Always check before offering any date or time.\nCOLUMNS: Doctor ID, Doctor Name, Day of Week, Start Time, End Time, Status (Available / Booked).\nERROR HANDLING: No slots → list the next available times instead.\n\n── TOOL: find_last_entry_id ──\nPURPOSE: Find the last Appointment Entry ID to generate the next one.\nWHEN TO USE: Only right before calling create_appointment.\nERROR HANDLING: Sheet empty → start from APT-001.\n\n── TOOL: create_appointment ──\nPURPOSE: Save a new appointment to the Appointments sheet.\nWHEN TO USE: Only after ALL of these are true:\n  ✓ Patient is registered\n  ✓ Doctor is chosen\n  ✓ Slot is confirmed available from get_availability\n  ✓ Patient has clearly said yes, book it\nCOLUMN MAPPING:\n  → Entry ID, Date (DD.MM.YYYY), Start Time, End Time, Day of Week\n  → Doctor ID, Doctor Name, Clinic ID\n  → Patient ID, Patient Name\n  → Appointment Status = \"Scheduled\"\n  → Urgency Level = High / Medium / Low (from your urgency assessment)\n  → Notes = any relevant patient notes\nERROR HANDLING: Tool fails → say: \"I could not confirm your booking. Please try again or call reception.\"\n\n── TOOL: cancel_appointment / update_appointment ──\nPURPOSE: Cancel or reschedule an existing appointment.\nWHEN TO USE: When patient asks to cancel or change their appointment.\nHOW TO USE:\n  1. Call find_patient to confirm who they are\n  2. Show their upcoming appointments\n  3. Ask which one to cancel\n  4. Update Appointment Status to \"Cancelled\" and add cancellation date in Notes\nERROR HANDLING: No appointments found → say: \"I don't see any upcoming appointments. Would you like to book one?\"\n\n── TOOL: send_email ──\nPURPOSE: Send automatic email confirmations to the patient.\nTHIS TOOL MUST BE CALLED AUTOMATICALLY after each of these three events. You do NOT wait for the patient to ask. You send it yourself every time.\n\nEVENT 1 — AFTER BOOKING:\nSubject: \"Appointment Confirmation — MediAssist\"\nBody must include:\n  - Patient name\n  - Appointment ID\n  - Doctor name and specialty\n  - Clinic name and full address\n  - Date, start time, end time\n  - What to bring: insurance card, valid ID, previous medical records if relevant\n  - \"Please cancel at least 24 hours in advance by contacting us.\"\n  - \"We look forward to seeing you.\"\n\nEVENT 2 — AFTER CANCELLATION:\nSubject: \"Appointment Cancellation Confirmation — MediAssist\"\nBody must include:\n  - Patient name\n  - Which appointment was cancelled: doctor name, date, time\n  - Confirmation it has been removed\n  - \"If you would like to book a new appointment, please let me know.\"\n\nEVENT 3 — AFTER RESCHEDULING:\nSubject: \"Appointment Reschedule Confirmation — MediAssist\"\nBody must include:\n  - Patient name\n  - OLD appointment: doctor, date, time\n  - NEW appointment: doctor, date, time, clinic\n  - \"Your new appointment is confirmed.\"\n\nHOW TO FIND THE EMAIL ADDRESS:\n  Step 1: When find_patient runs → read and remember the Email field from their record.\n  Step 2: Use that email for all send_email calls.\n  Step 3: If Email = \"not provided\" → do NOT call send_email. Say in Telegram: \"I would have sent a confirmation email, but we don't have your email address. Would you like to add it now?\" If yes → save it to their patient record.\n\nRULES:\n  - Always send automatically. Never wait for the patient to ask.\n  - Never send if email = \"not provided\".\n  - After every email, confirm in Telegram: \"A confirmation email has been sent to [email address].\"\n  - If tool fails → do not stop. Say: \"Your appointment is confirmed. The email could not be sent right now but your booking is saved.\"\n\n── TOOL: Create an event ──\nPURPOSE: Add the appointment to Google Calendar AND send a direct calendar invite to the patient.\nWHEN TO USE: Immediately after create_appointment succeeds. Always call this automatically. Never skip it.\n\nFILL THESE FIELDS EXACTLY:\n- Summary: \"Appointment — Dr. [Doctor Name] — [Patient Full Name]\"\n- Start: appointment start date and time in ISO 8601 format. Example: 2025-06-15T09:00:00\n- End: appointment end date and time in ISO 8601 format. Example: 2025-06-15T09:30:00\n- Attendees: the patient's email address saved in their record in the Patients Google Sheet.\n\nATTENDEES FIELD — THIS IS THE MOST IMPORTANT FIELD:\n- This field sends the patient a real Google Calendar invite directly to their Gmail inbox.\n- When the patient receives this invite, they will see Yes / No / Maybe buttons.\n- If they click Yes, the appointment is automatically added to their own Google Calendar.\n- Always fill Attendees with the patient's email address from their record.\n- If the patient email is \"not provided\" → create the calendar event without Attendees. Do not skip creating the event.\n- Never put the text \"not provided\" into the Attendees field. If email is missing, leave Attendees empty.\n\nERROR HANDLING:\n- If event creation fails → do not stop the workflow. Say: \"Your appointment is confirmed and saved. The calendar invite could not be sent right now.\"\n- If patient has no email → create the event on the clinic calendar only, no Attendees field.\n\n── TOOL: Update an event ──\nPURPOSE: Update the Google Calendar event when an appointment is rescheduled.\nWHEN TO USE: After a reschedule is confirmed.\nFill the new Start, End, Summary, and Attendees with updated details.\n\n── TOOL: Delete an event ──\nPURPOSE: Remove the Google Calendar event when an appointment is cancelled.\nWHEN TO USE: After an appointment is successfully cancelled in Google Sheets.\n\n── TOOL: Wikipedia ──\nPURPOSE: Answer general health knowledge questions only.\nNEVER use for diagnosis or treatment advice.\nAlways end with: \"For personal medical advice, please consult your doctor directly.\"\n\n── TOOL: Calculator ──\nPURPOSE: Calculate age from date of birth or time differences.\n\n── TOOL: Date & Time tool ──\nPURPOSE: Get today's current date and time.\nWHEN TO USE: Any time you need the current date for booking or scheduling.\n\n══════════════════════════════════════════\nSECTION 2 — URGENCY LEVEL DETECTION\n══════════════════════════════════════════\n\nWhen a patient describes symptoms, assess TWO things separately:\nA) PATIENT REPORTED URGENCY — how urgent do they say it is?\nB) CLINICAL URGENCY — based on medical facts, how urgent is it really?\n\nHIGH (Notfall): Chest pain, difficulty breathing, stroke symptoms, severe allergic reaction, uncontrolled bleeding, loss of consciousness, severe head injury, fever above 40°C with stiff neck.\nMEDIUM (Dringend): Persistent pain over 24 hours, fever 38.5–40°C, suspected infection, worsening chronic condition.\nLOW (Routinemäßig): Minor skin issues, mild cold, routine checkup, prescription renewal, referral letter, follow-up visit.\n\nACTIONS:\n- Clinical HIGH → Say in patient's language: \"This sounds urgent. If life-threatening, call 112 immediately. Otherwise I will find you the next available slot today.\" Then book same-day.\n- Patient claims HIGH but clinical is LOW → Say: \"Based on your symptoms this does not qualify as an emergency. I will book you the next standard appointment. If symptoms worsen, call 112.\" Book standard slot.\n- Clinical MEDIUM → Find earliest slot within 1 to 2 days.\n- Clinical LOW → Normal booking flow.\n\n══════════════════════════════════════════\nSECTION 3 — CONVERSATION FLOW STEP BY STEP\n══════════════════════════════════════════\n\nSTEP 1 — GREET AND IDENTIFY\nGreet in the language the patient first writes in.\nSay: \"Hello! I am MediAssist, your digital clinic assistant. May I have your full name please?\"\nCall find_patient. Read and remember their Email field for later use.\n\nSTEP 2 — RETURNING PATIENT\nFound → \"Welcome back, [First Name]! How can I help you today?\"\nNot found → \"It looks like you are new here. I would love to register you — it only takes a moment.\"\n\nSTEP 3 — NEW PATIENT REGISTRATION\nCollect fields in this exact order, 1 to 2 questions at a time.\nSpeak in the patient's current language throughout:\n  Question 1: \"What is your full name and date of birth?\"\n  Question 2: \"What is your gender?\"\n  Question 3: \"Could you please share your email address? We use it to send you appointment confirmations and Google Calendar invites.\" — MANDATORY. Never skip.\n  Question 4: \"What is your phone number?\"\n  Question 5: \"What is your full address — street, city, and postal code?\"\n  Question 6: \"Do you have health insurance? If yes, which provider and what is your insurance number?\"\nAfter collecting all → call get_last_patient_id → generate ID → call create_patient.\nConfirm: \"You are registered! Your patient ID is [ID]. How can I help you today?\"\n\nSTEP 4 — UNDERSTAND THE REQUEST\nAsk: \"What brings you in today?\"\nSymptoms described → assess urgency (Section 2).\nSpecific service → go to Step 5.\n\nSTEP 5 — FIND THE RIGHT DOCTOR\nCall get_clinics if patient needs to choose a location.\nCall get_doctors to find the right specialist.\nPresent clearly: \"We have Dr. [Name] — [Specialty] at [Clinic]. Would you like to book with them?\"\n\nSTEP 6 — CHECK AVAILABILITY\nCall get_availability for the chosen doctor.\nOffer 2 to 3 options: \"Dr. [Name] is available on [Day] at [Time] or [Day] at [Time]. Which do you prefer?\"\n\nSTEP 7 — CONFIRM BEFORE BOOKING\nAlways say: \"Just to confirm — I will book you with Dr. [Name] at [Clinic] on [Date] at [Time]. Shall I go ahead?\"\nWait for a clear yes before proceeding.\n\nSTEP 8 — BOOK, CALENDAR, EMAIL, CONFIRM\nDo all of these in this exact order:\n  1. Call find_last_entry_id → generate appointment ID\n  2. Call create_appointment → save to Appointments sheet\n  3. Call Create an event → add to Google Calendar with patient email in Attendees field so they receive the Yes / No / Maybe invite\n  4. Call send_email AUTOMATICALLY → send booking confirmation email to patient\n  5. Send this summary in Telegram in the patient's current language:\n     \"✅ Your appointment is confirmed!\n      📋 Appointment ID: [ID]\n      👨‍⚕️ Doctor: Dr. [Name] ([Specialty])\n      🏥 Clinic: [Clinic Name], [Address]\n      📅 Date: [Date]\n      🕐 Time: [Start Time] to [End Time]\n      📌 Please bring your insurance card and a valid ID.\n      📧 A confirmation email has been sent to [email address].\n      📅 A Google Calendar invite has been sent to your Gmail. Please check your inbox and click Yes to confirm.\n      To cancel, please do so at least 24 hours in advance.\"\n\nSTEP 9 — CANCELLATION FLOW\n  1. Call find_patient → find their appointments\n  2. Show appointments and confirm which one to cancel\n  3. Update Appointment Status to \"Cancelled\" in Google Sheets\n  4. Call Delete an event → remove from Google Calendar\n  5. Call send_email AUTOMATICALLY → send cancellation confirmation email\n  6. Say in Telegram in the patient's language: \"Your appointment with Dr. [Name] on [Date] has been cancelled. A confirmation email has been sent to [email].\"\n\nSTEP 10 — RESCHEDULE FLOW\n  1. Cancel the old appointment using Step 9\n  2. Book the new appointment using Steps 5 to 8\n  3. Call Update an event → update Google Calendar with new details and patient email in Attendees\n  4. Call send_email AUTOMATICALLY → send reschedule confirmation showing old and new details\n  5. Confirm in Telegram in the patient's language with both old and new appointment details\n\n══════════════════════════════════════════\nSECTION 4 — GOOGLE SHEETS STRUCTURE\n══════════════════════════════════════════\n\nSheet: Clinics → Clinic ID, Clinic Name, Address, City, Phone, Email, Opening Hours, Notes\nSheet: Patients → Patient ID, Full Name, Date of Birth, Gender, Phone, Email, Address, Insurance Provider, Insurance Number, Notes\nSheet: Doctor Availability → Doctor ID, Doctor Name, Day of Week, Start Time, End Time, Status, Clinic ID\nSheet: Doctors → Doctor ID, Full Name, Specialty, Clinic ID, Phone, Email, Notes\nSheet: Appointments → Entry ID, Date, Day of Week, Start Time, End Time, Doctor ID, Doctor Name, Clinic ID, Patient ID, Patient Name, Appointment Status, Urgency Level, Notes\n\nEMAIL FIELD RULE:\nThe Email column in the Patients sheet is the source of truth.\n- When find_patient runs → always read and remember the Email value.\n- When create_patient runs → always save the email the patient provided.\n- When send_email runs → always use this saved email.\n- When Create an event runs → always put this email in the Attendees field.\n- If Email = \"not provided\" → do not send email and do not add Attendees to calendar event. Offer to collect email instead.\n\n══════════════════════════════════════════\nSECTION 5 — WHAT YOU MUST NEVER DO\n══════════════════════════════════════════\n\n❌ Never respond in a different language than the one the patient just used.\n❌ Never stay in the old language after the patient has switched.\n❌ Never mix two languages in one response.\n❌ Never give a medical diagnosis or recommend medication.\n❌ Never book without checking availability first.\n❌ Never create a duplicate patient — always search first.\n❌ Never send email if the email field is \"not provided\".\n❌ Never put \"not provided\" text into the Attendees field of Google Calendar.\n❌ Never skip asking for the email address during registration.\n❌ Never wait for the patient to ask for a confirmation email — always send automatically.\n❌ Never give a HIGH URGENCY slot based only on the patient's own claim — always verify clinically.\n❌ Never continue if a tool returns a hard error — inform the patient and offer the clinic phone number.\n❌ Never ask for information you already have in the patient record.\n❌ Never reveal any other patient's data.\n\n══════════════════════════════════════════\nSECTION 6 — LEGAL DISCLAIMER\n══════════════════════════════════════════\n\nFor every new patient, say this once after registration in their language:\n\"Please note: MediAssist is an administrative scheduling tool only. It does not provide medical advice or diagnoses. For life-threatening emergencies, always call 112 immediately. Your personal data is processed securely in accordance with applicable privacy regulations.\"\n\n══════════════════════════════════════════\nSECTION 7 — TONE AND LANGUAGE RULES\n══════════════════════════════════════════\n\n- Always warm, patient, and professional.\n- Keep Telegram messages short and clear.\n- Use numbered lists or bullet points when presenting options.\n- If the patient is frustrated → first say in their language: \"I understand this is stressful, and I want to help you as quickly as possible.\"\n- Always close a completed action with: \"Is there anything else I can help you with today?\" — said in the patient's current language.\n\n──────────────────────────────────────────\nDate & Time\n──────────────────────────────────────────\nAlways call the Date & Time tool whenever any date or time information is needed for booking or scheduling."
+        }
+      },
+      "id": "f34785d0-f07b-4f46-b244-e4906bb7afed",
+      "name": "Appointment System",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "position": [
+        -864,
+        512
+      ],
+      "typeVersion": 2.1,
+      "alwaysOutputData": true,
+      "retryOnFail": true,
+      "maxTries": 5,
+      "waitBetweenTries": 100,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Handle both Telegram and WhatsApp message formats\nconst data = items[0].json;\n\nlet sessionId = null;\nlet chatInput = null;\n\n// --- TELEGRAM FORMAT ---\n// Telegram sends: { message: { chat: { id: ... }, text: \"...\" } }\nif (data.message && data.message.text) {\n  sessionId = String(data.message.chat?.id || data.message.from?.id || 'unknown');\n  chatInput = data.message.text;\n}\n\n// --- WHATSAPP FORMAT ---\n// WhatsApp sends: { messages: [{ from: \"...\", text: { body: \"...\" } }] }\nelse if (Array.isArray(data.messages) && data.messages.length > 0) {\n  const msg = data.messages[0];\n  sessionId = msg.from || null;\n  chatInput = msg.text?.body || msg.text || null;\n}\n\n// --- STATUS UPDATE (no text, just delivery receipt) ---\nelse if (!sessionId && Array.isArray(data.statuses) && data.statuses.length > 0) {\n  sessionId = data.statuses[0].recipient_id || null;\n  chatInput = null;\n}\n\n// Safety fallback\nif (!chatInput) chatInput = data.text || data.chatInput || '';\nif (!sessionId) sessionId = 'session_' + Date.now();\n\nreturn [\n  {\n    json: {\n      sessionId,\n      chatInput,\n      text: chatInput  // also set 'text' field so downstream nodes work\n    }\n  }\n];"
+      },
+      "id": "7423cdd9-f989-40eb-a92c-e66c49270ed1",
+      "name": "PrepareInput",
+      "type": "n8n-nodes-base.code",
+      "position": [
+        -2224,
+        912
+      ],
+      "typeVersion": 2,
+      "alwaysOutputData": true,
+      "retryOnFail": true,
+      "maxTries": 5,
+      "waitBetweenTries": 100,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "1Oqpfrn32RTfq0qM1xWD_4aTSNmPG-zZNjs4UPLHj2rU",
+          "mode": "list",
+          "cachedResultName": "HealthCareDB",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1Oqpfrn32RTfq0qM1xWD_4aTSNmPG-zZNjs4UPLHj2rU/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 1143496288,
+          "mode": "list",
+          "cachedResultName": "Patients",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1NWB_y3SkNm3reYX5FiBeempID32O9VMSFZ0Og3VKHBU/edit#gid=1143496288"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Patient ID": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Patient_ID', ``, 'string') }}",
+            "Full Name": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Full_Name', ``, 'string') }}",
+            "Date of Birth": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Date_of_Birth', ``, 'string') }}",
+            "Gender": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Gender', ``, 'string') }}",
+            "Phone": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Phone', ``, 'string') }}",
+            "Email": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Email', ``, 'string') }}",
+            "Address": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Address', ``, 'string') }}",
+            "Insurance Provider": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Insurance_Provider', ``, 'string') }}",
+            "Insurance Number": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Insurance_Number', ``, 'string') }}",
+            "Notes": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Notes', ``, 'string') }}",
+            "Urgency Level": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Urgency_Level', ``, 'string') }}",
+            "Email Address": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Email_Address', ``, 'string') }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "Patient ID",
+              "displayName": "Patient ID",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Full Name",
+              "displayName": "Full Name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Date of Birth",
+              "displayName": "Date of Birth",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Gender",
+              "displayName": "Gender",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Phone",
+              "displayName": "Phone",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Email",
+              "displayName": "Email",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Address",
+              "displayName": "Address",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Insurance Provider",
+              "displayName": "Insurance Provider",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Insurance Number",
+              "displayName": "Insurance Number",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Notes",
+              "displayName": "Notes",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Urgency Level",
+              "displayName": "Urgency Level",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Email Address",
+              "displayName": "Email Address",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "id": "d549141d-6149-4df0-b29d-daed5a415d42",
+      "name": "create_patient",
+      "type": "n8n-nodes-base.googleSheetsTool",
+      "position": [
+        -912,
+        928
+      ],
+      "typeVersion": 4.6,
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "AwlbE8H5Zw2UiDE0",
+          "name": "Google Sheets OAuth2 API"
+        }
+      }
+    },
+    {
+      "parameters": {},
+      "id": "1fc7deea-f7cc-4c85-b4e9-dcbee6744e38",
+      "name": "Calculator",
+      "type": "@n8n/n8n-nodes-langchain.toolCalculator",
+      "position": [
+        -1104,
+        1120
+      ],
+      "typeVersion": 1
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "1Oqpfrn32RTfq0qM1xWD_4aTSNmPG-zZNjs4UPLHj2rU",
+          "mode": "list",
+          "cachedResultName": "HealthCareDB",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1Oqpfrn32RTfq0qM1xWD_4aTSNmPG-zZNjs4UPLHj2rU/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 1143496288,
+          "mode": "list",
+          "cachedResultName": "Patients",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1Oqpfrn32RTfq0qM1xWD_4aTSNmPG-zZNjs4UPLHj2rU/edit#gid=1143496288"
+        },
+        "options": {}
+      },
+      "id": "d3b69745-6011-4e90-ad6c-77ef65961f49",
+      "name": "get_last_patient_id",
+      "type": "n8n-nodes-base.googleSheetsTool",
+      "position": [
+        -768,
+        928
+      ],
+      "typeVersion": 4.6,
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "AwlbE8H5Zw2UiDE0",
+          "name": "Google Sheets OAuth2 API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "1Oqpfrn32RTfq0qM1xWD_4aTSNmPG-zZNjs4UPLHj2rU",
+          "mode": "list",
+          "cachedResultName": "HealthCareDB",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1Oqpfrn32RTfq0qM1xWD_4aTSNmPG-zZNjs4UPLHj2rU/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Clinics",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1Oqpfrn32RTfq0qM1xWD_4aTSNmPG-zZNjs4UPLHj2rU/edit#gid=0"
+        },
+        "options": {}
+      },
+      "id": "facd0598-cfce-4205-b4d8-76b6cb7f4a1a",
+      "name": "get_clinics",
+      "type": "n8n-nodes-base.googleSheetsTool",
+      "position": [
+        -640,
+        928
+      ],
+      "typeVersion": 4.6,
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "AwlbE8H5Zw2UiDE0",
+          "name": "Google Sheets OAuth2 API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "1Oqpfrn32RTfq0qM1xWD_4aTSNmPG-zZNjs4UPLHj2rU",
+          "mode": "list",
+          "cachedResultName": "HealthCareDB",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1Oqpfrn32RTfq0qM1xWD_4aTSNmPG-zZNjs4UPLHj2rU/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 2075443495,
+          "mode": "list",
+          "cachedResultName": "Doctors",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1Oqpfrn32RTfq0qM1xWD_4aTSNmPG-zZNjs4UPLHj2rU/edit#gid=2075443495"
+        },
+        "options": {}
+      },
+      "id": "5c3eb5eb-5850-4815-9d57-2e1e4819b03d",
+      "name": "get_doctors",
+      "type": "n8n-nodes-base.googleSheetsTool",
+      "position": [
+        336,
+        1344
+      ],
+      "typeVersion": 4.6,
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "AwlbE8H5Zw2UiDE0",
+          "name": "Google Sheets OAuth2 API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "1Oqpfrn32RTfq0qM1xWD_4aTSNmPG-zZNjs4UPLHj2rU",
+          "mode": "list",
+          "cachedResultName": "HealthCareDB",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1Oqpfrn32RTfq0qM1xWD_4aTSNmPG-zZNjs4UPLHj2rU/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 1143496288,
+          "mode": "list",
+          "cachedResultName": "Patients",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1Oqpfrn32RTfq0qM1xWD_4aTSNmPG-zZNjs4UPLHj2rU/edit#gid=1143496288"
+        },
+        "options": {}
+      },
+      "id": "6cb88a6b-cac6-484e-8f5f-f2c77853940c",
+      "name": "find_patient",
+      "type": "n8n-nodes-base.googleSheetsTool",
+      "position": [
+        320,
+        1136
+      ],
+      "typeVersion": 4.6,
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "AwlbE8H5Zw2UiDE0",
+          "name": "Google Sheets OAuth2 API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "1Oqpfrn32RTfq0qM1xWD_4aTSNmPG-zZNjs4UPLHj2rU",
+          "mode": "list",
+          "cachedResultName": "HealthCareDB",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1Oqpfrn32RTfq0qM1xWD_4aTSNmPG-zZNjs4UPLHj2rU/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 1667520635,
+          "mode": "list",
+          "cachedResultName": "Appointments",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1Oqpfrn32RTfq0qM1xWD_4aTSNmPG-zZNjs4UPLHj2rU/edit#gid=1667520635"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Date": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Date', ``, 'string') }}",
+            "Notes": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Notes', ``, 'string') }}",
+            "End Time": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('End_Time', ``, 'string') }}",
+            "Entry ID": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Entry_ID', ``, 'string') }}",
+            "Clinic ID": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Clinic_ID', ``, 'string') }}",
+            "Doctor ID": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Doctor_ID', ``, 'string') }}",
+            "Patient ID": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Patient_ID', ``, 'string') }}",
+            "Start Time": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Start_Time', ``, 'string') }}",
+            "Day of Week": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Day_of_Week', ``, 'string') }}",
+            "Doctor Name": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Doctor_Name', ``, 'string') }}",
+            "Patient Name": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Patient_Name', ``, 'string') }}",
+            "Appointment Status": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Appointment_Status', ``, 'string') }}",
+            "Urgency Level": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Urgency_Level', ``, 'string') }}",
+            "Email Address": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Email_Address', ``, 'string') }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "Entry ID",
+              "displayName": "Entry ID",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Date",
+              "displayName": "Date",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Doctor ID",
+              "displayName": "Doctor ID",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Doctor Name",
+              "displayName": "Doctor Name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Clinic ID",
+              "displayName": "Clinic ID",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Day of Week",
+              "displayName": "Day of Week",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Start Time",
+              "displayName": "Start Time",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "End Time",
+              "displayName": "End Time",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Patient ID",
+              "displayName": "Patient ID",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Patient Name",
+              "displayName": "Patient Name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Appointment Status",
+              "displayName": "Appointment Status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Notes",
+              "displayName": "Notes",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Urgency Level",
+              "displayName": "Urgency Level",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Email Address",
+              "displayName": "Email Address",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "id": "a38bde18-df43-4e6b-86df-d37b92a45b25",
+      "name": "create_appointment",
+      "type": "n8n-nodes-base.googleSheetsTool",
+      "position": [
+        -368,
+        912
+      ],
+      "typeVersion": 4.6,
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "AwlbE8H5Zw2UiDE0",
+          "name": "Google Sheets OAuth2 API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "1Oqpfrn32RTfq0qM1xWD_4aTSNmPG-zZNjs4UPLHj2rU",
+          "mode": "list",
+          "cachedResultName": "HealthCareDB",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1Oqpfrn32RTfq0qM1xWD_4aTSNmPG-zZNjs4UPLHj2rU/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 681196854,
+          "mode": "list",
+          "cachedResultName": "Doctor Availbilty",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1Oqpfrn32RTfq0qM1xWD_4aTSNmPG-zZNjs4UPLHj2rU/edit#gid=681196854"
+        },
+        "options": {}
+      },
+      "id": "1c529b35-a011-4dbf-8a6b-61907d483be8",
+      "name": "get_availability",
+      "type": "n8n-nodes-base.googleSheetsTool",
+      "position": [
+        -528,
+        928
+      ],
+      "typeVersion": 4.6,
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "AwlbE8H5Zw2UiDE0",
+          "name": "Google Sheets OAuth2 API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "1Oqpfrn32RTfq0qM1xWD_4aTSNmPG-zZNjs4UPLHj2rU",
+          "mode": "list",
+          "cachedResultName": "HealthCareDB",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1Oqpfrn32RTfq0qM1xWD_4aTSNmPG-zZNjs4UPLHj2rU/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 1667520635,
+          "mode": "list",
+          "cachedResultName": "Appointments",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1Oqpfrn32RTfq0qM1xWD_4aTSNmPG-zZNjs4UPLHj2rU/edit#gid=1667520635"
+        },
+        "options": {}
+      },
+      "id": "039ded6b-5621-4091-8379-4085e6c9ec10",
+      "name": "find_last_entry_id",
+      "type": "n8n-nodes-base.googleSheetsTool",
+      "position": [
+        -208,
+        880
+      ],
+      "typeVersion": 4.6,
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "AwlbE8H5Zw2UiDE0",
+          "name": "Google Sheets OAuth2 API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "924ad748-14b9-4f08-a13b-c8b602c09e4a",
+              "operator": {
+                "type": "string",
+                "operation": "exists",
+                "singleValue": true
+              },
+              "leftValue": "={{ $json.text }}",
+              "rightValue": "null"
+            }
+          ],
+          "combinator": "or"
+        },
+        "options": {}
+      },
+      "id": "95bd96c1-568f-45e7-92c5-14d31ddd5cdf",
+      "name": "If",
+      "type": "n8n-nodes-base.if",
+      "position": [
+        -1264,
+        528
+      ],
+      "typeVersion": 2.2,
+      "alwaysOutputData": true,
+      "retryOnFail": true,
+      "maxTries": 5,
+      "waitBetweenTries": 100,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "f2e2dbb1-7d6c-4592-a078-6541d92b871c",
+                    "operator": {
+                      "type": "string",
+                      "operation": "exists",
+                      "singleValue": true
+                    },
+                    "leftValue": "={{ $json.message.photo[0].file_id }}",
+                    "rightValue": ""
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Image"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "d97e949b-6df1-457b-9393-91726db54083",
+                    "operator": {
+                      "type": "string",
+                      "operation": "exists",
+                      "singleValue": true
+                    },
+                    "leftValue": "={{ $json.message.document.file_id }}",
+                    "rightValue": ""
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Document"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "f57a6d2f-97bf-4d0b-860f-3addbe4b91f7",
+                    "operator": {
+                      "type": "string",
+                      "operation": "exists",
+                      "singleValue": true
+                    },
+                    "leftValue": "={{ $json.message.voice.file_id }}",
+                    "rightValue": ""
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Audio"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "741680c0-96e2-4845-b342-5d237c452011",
+                    "operator": {
+                      "type": "string",
+                      "operation": "exists",
+                      "singleValue": true
+                    },
+                    "leftValue": "={{ $json.message.text }}",
+                    "rightValue": ""
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Text"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "12fa9120-49d2-45c5-85f1-f1e3e709d092",
+      "name": "Switch",
+      "type": "n8n-nodes-base.switch",
+      "position": [
+        -2976,
+        528
+      ],
+      "typeVersion": 3.2,
+      "alwaysOutputData": false,
+      "retryOnFail": false,
+      "maxTries": 5,
+      "waitBetweenTries": 100,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "resource": "audio",
+        "input": "={{ $json.output }}",
+        "voice": "fable",
+        "options": {}
+      },
+      "id": "4fb79285-be63-4ca8-b318-45f1bfc30cac",
+      "name": "Generate Audio",
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "position": [
+        288,
+        384
+      ],
+      "typeVersion": 1.8,
+      "alwaysOutputData": true,
+      "retryOnFail": true,
+      "maxTries": 5,
+      "waitBetweenTries": 100,
+      "credentials": {
+        "openAiApi": {
+          "id": "CL3mXeeMg3ghYQEn",
+          "name": "OpenAI account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Loop over input items and change the MIME type of binary data\nfor (const item of $input.all()) {\n  // Check if the item has binary data\n  if (item.binary) {\n    // Find the binary property name (assuming there's at least one)\n    const binaryPropertyNames = Object.keys(item.binary);\n\n    for (const propName of binaryPropertyNames) {\n      // If the MIME type is 'audio/mp3', change it to 'audio/mpeg'\n      if (item.binary[propName].mimeType === \"audio/mp3\") {\n        item.binary[propName].mimeType = \"audio/mpeg\";\n      }\n    }\n  }\n}\n\nreturn $input.all();"
+      },
+      "id": "95b24cb0-e532-47b1-a98c-4ef2d7974cec",
+      "name": "Code",
+      "type": "n8n-nodes-base.code",
+      "position": [
+        528,
+        368
+      ],
+      "typeVersion": 2,
+      "alwaysOutputData": true,
+      "retryOnFail": true,
+      "maxTries": 5,
+      "waitBetweenTries": 100,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "03affec6-8e7b-459d-a08a-c9af2660e319",
+              "operator": {
+                "type": "string",
+                "operation": "contains"
+              },
+              "leftValue": "={{ $json.result.file_path }}",
+              "rightValue": ".pdf"
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "9536a5f8-6800-4770-8ce6-ee2344fd2fd4",
+      "name": "If PDF File",
+      "type": "n8n-nodes-base.if",
+      "position": [
+        -2416,
+        544
+      ],
+      "typeVersion": 2.2,
+      "alwaysOutputData": true,
+      "retryOnFail": true,
+      "maxTries": 5,
+      "waitBetweenTries": 100,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "7ca8afd2-d76b-4b6a-b4dc-02fcd035453e",
+              "name": "text",
+              "value": "={{ $('Telegram Trigger1').item.json.message.document.file_id }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "f6040a09-1534-44fd-8887-8d633590e0f8",
+      "name": "Document Prompt",
+      "type": "n8n-nodes-base.set",
+      "position": [
+        -1648,
+        496
+      ],
+      "typeVersion": 3.4,
+      "alwaysOutputData": true,
+      "retryOnFail": true,
+      "maxTries": 5,
+      "waitBetweenTries": 100,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "resource": "image",
+        "operation": "analyze",
+        "modelId": {
+          "__rl": true,
+          "value": "models/gemini-2.5-flash-lite",
+          "mode": "list",
+          "cachedResultName": "models/gemini-2.5-flash-lite"
+        },
+        "text": "Extract all the data from the documents Data must be medical reports and attracts all the data of the medical reports from the picture",
+        "inputType": "binary",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.googleGemini",
+      "typeVersion": 1.1,
+      "position": [
+        -1984,
+        336
+      ],
+      "id": "1d4c14af-d53c-4be5-8f13-58e27f616941",
+      "name": "Analyze an image",
+      "alwaysOutputData": true,
+      "retryOnFail": true,
+      "maxTries": 5,
+      "waitBetweenTries": 100,
+      "credentials": {
+        "googlePalmApi": {
+          "id": "bDcyUgXKXn79a2JG",
+          "name": "Google Gemini(PaLM) Api account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "updates": [
+          "message"
+        ],
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.telegramTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -3216,
+        560
+      ],
+      "id": "61a8141e-f356-4dd6-9e2c-768774a51f4f",
+      "name": "Telegram Trigger1",
+      "webhookId": "21ecbef0-e528-4fc4-a598-c41427fe7f32",
+      "alwaysOutputData": true,
+      "retryOnFail": true,
+      "maxTries": 5,
+      "waitBetweenTries": 100,
+      "credentials": {
+        "telegramApi": {
+          "id": "D16iRDpuMm9KCbOo",
+          "name": "Telegram account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "222becc0-38d2-4823-b6fe-62f867cf2881",
+              "name": "text",
+              "value": "={{ $('Telegram Trigger1').item.json.message.text }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -1648,
+        848
+      ],
+      "id": "fcc4faff-5cf2-42a1-8283-330c1fe70ffe",
+      "name": "Text message",
+      "alwaysOutputData": true,
+      "retryOnFail": true,
+      "maxTries": 5,
+      "waitBetweenTries": 100,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "222becc0-38d2-4823-b6fe-62f867cf2881",
+              "name": "text",
+              "value": "={{ $json.content.parts[0].text }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -1648,
+        672
+      ],
+      "id": "68a9b461-2583-42e1-b588-07866ce95cbd",
+      "name": "Voice message",
+      "alwaysOutputData": true,
+      "retryOnFail": true,
+      "maxTries": 5,
+      "waitBetweenTries": 100,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "a97eaa08-4065-47e8-a8ef-a454a9b6f442",
+              "name": "text",
+              "value": "={{ $json.content.parts[0].text }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -1664,
+        272
+      ],
+      "id": "675b011f-eda6-444c-a92b-10080589b47e",
+      "name": "Image message",
+      "alwaysOutputData": true,
+      "retryOnFail": true,
+      "maxTries": 5,
+      "waitBetweenTries": 100,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "resource": "file",
+        "fileId": "={{ $json.message.voice.file_id }}",
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        -2688,
+        736
+      ],
+      "id": "a3540b48-604b-466a-82ef-8d7fdd0fd7eb",
+      "name": "Voice input",
+      "webhookId": "3e2f5d5f-ea81-4416-aa9d-d24f336eb615",
+      "retryOnFail": false,
+      "alwaysOutputData": false,
+      "maxTries": 5,
+      "waitBetweenTries": 100,
+      "notesInFlow": false,
+      "credentials": {
+        "telegramApi": {
+          "id": "D16iRDpuMm9KCbOo",
+          "name": "Telegram account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "resource": "file",
+        "fileId": "={{ $json.message.photo[0].file_id }}",
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        -2688,
+        336
+      ],
+      "id": "355266c1-03c5-41c7-b5f2-cf491caf56f1",
+      "name": "Image input",
+      "webhookId": "3e2f5d5f-ea81-4416-aa9d-d24f336eb615",
+      "alwaysOutputData": false,
+      "retryOnFail": false,
+      "waitBetweenTries": 100,
+      "credentials": {
+        "telegramApi": {
+          "id": "D16iRDpuMm9KCbOo",
+          "name": "Telegram account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "resource": "audio",
+        "modelId": {
+          "__rl": true,
+          "value": "models/gemini-2.5-flash-lite",
+          "mode": "list",
+          "cachedResultName": "models/gemini-2.5-flash-lite"
+        },
+        "inputType": "binary",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.googleGemini",
+      "typeVersion": 1.1,
+      "position": [
+        -1984,
+        720
+      ],
+      "id": "91b58a4d-61c5-4c68-9d25-4b8123cce55f",
+      "name": "Transcribe voice recording",
+      "alwaysOutputData": true,
+      "retryOnFail": true,
+      "maxTries": 5,
+      "waitBetweenTries": 100,
+      "credentials": {
+        "googlePalmApi": {
+          "id": "bDcyUgXKXn79a2JG",
+          "name": "Google Gemini(PaLM) Api account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "resource": "file",
+        "fileId": "={{ $json.message.document.file_id }}",
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        -2704,
+        544
+      ],
+      "id": "9c4dd6d6-b3fe-41c7-8422-cf1f1882bd20",
+      "name": "Get a file",
+      "webhookId": "69f25d14-8932-45b1-8920-932b78b78556",
+      "alwaysOutputData": false,
+      "retryOnFail": false,
+      "waitBetweenTries": 100,
+      "maxTries": 5,
+      "credentials": {
+        "telegramApi": {
+          "id": "D16iRDpuMm9KCbOo",
+          "name": "Telegram account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $('Telegram Trigger1').item.json.message.chat.id }}",
+        "text": "={{ $json.output }}",
+        "additionalFields": {
+          "appendAttribution": false
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        752,
+        560
+      ],
+      "id": "3e0bbc35-cd56-448d-b95e-c7cb3a9fd5d3",
+      "name": "Response",
+      "webhookId": "95195598-9911-4e40-9158-ec0b9ee58a83",
+      "alwaysOutputData": false,
+      "retryOnFail": false,
+      "maxTries": 5,
+      "waitBetweenTries": 100,
+      "credentials": {
+        "telegramApi": {
+          "id": "D16iRDpuMm9KCbOo",
+          "name": "Telegram account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "operation": "sendAudio",
+        "chatId": "={{ $('Telegram Trigger1').item.json.message.chat.id }}",
+        "binaryData": true,
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        752,
+        368
+      ],
+      "id": "3285bdde-edae-47a9-beb1-11c30dbd5034",
+      "name": "Voice Response",
+      "webhookId": "95195598-9911-4e40-9158-ec0b9ee58a83",
+      "alwaysOutputData": false,
+      "retryOnFail": false,
+      "maxTries": 5,
+      "waitBetweenTries": 100,
+      "credentials": {
+        "telegramApi": {
+          "id": "D16iRDpuMm9KCbOo",
+          "name": "Telegram account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "operation": "delete",
+        "calendar": {
+          "__rl": true,
+          "value": "naveedshahid275@gmail.com",
+          "mode": "list",
+          "cachedResultName": "naveedshahid275@gmail.com"
+        },
+        "eventId": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Event_ID', ``, 'string') }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleCalendarTool",
+      "typeVersion": 1.3,
+      "position": [
+        192,
+        896
+      ],
+      "id": "8ee7ab59-23be-4f0d-847c-cb6dff41ee3f",
+      "name": "Delete an event",
+      "credentials": {
+        "googleCalendarOAuth2Api": {
+          "id": "gWlSfs9LALtkOj1k",
+          "name": "Google Calendar account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "calendar": {
+          "__rl": true,
+          "value": "naveedshahid275@gmail.com",
+          "mode": "list",
+          "cachedResultName": "naveedshahid275@gmail.com"
+        },
+        "start": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Start', ``, 'string') }}",
+        "end": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('End', ``, 'string') }}",
+        "useDefaultReminders": false,
+        "additionalFields": {
+          "attendees": [
+            "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('attendees0_Attendees', `The patient's email address from their record in Google Sheets. This is used to send them a Google Calendar invite with Yes/No/Maybe buttons.`, 'string') }}"
+          ],
+          "summary": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Summary', `Place and clear the full name of the patient and phone number and the Urgency level of the patient`, 'string') }}"
+        },
+        "remindersUi": {
+          "remindersValues": []
+        }
+      },
+      "type": "n8n-nodes-base.googleCalendarTool",
+      "typeVersion": 1.3,
+      "position": [
+        48,
+        912
+      ],
+      "id": "69bf69bc-90d9-4651-beb9-1914143c636e",
+      "name": "Create an event",
+      "credentials": {
+        "googleCalendarOAuth2Api": {
+          "id": "gWlSfs9LALtkOj1k",
+          "name": "Google Calendar account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "calendar": {
+          "__rl": true,
+          "value": "naveedshahid275@gmail.com",
+          "mode": "list",
+          "cachedResultName": "naveedshahid275@gmail.com"
+        },
+        "eventId": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Event_ID', ``, 'string') }}",
+        "useDefaultReminders": false,
+        "updateFields": {
+          "end": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('End', ``, 'string') }}",
+          "start": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Start', ``, 'string') }}",
+          "summary": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Summary', `Include full name patient id and phone number`, 'string') }}"
+        }
+      },
+      "type": "n8n-nodes-base.googleCalendarTool",
+      "typeVersion": 1.3,
+      "position": [
+        336,
+        928
+      ],
+      "id": "8dd8e382-b983-401d-a480-7d68f584256e",
+      "name": "Update an event",
+      "credentials": {
+        "googleCalendarOAuth2Api": {
+          "id": "gWlSfs9LALtkOj1k",
+          "name": "Google Calendar account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('To', ``, 'string') }}",
+        "subject": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Subject', ``, 'string') }}",
+        "emailType": "text",
+        "message": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Message', ``, 'string') }}",
+        "options": {
+          "appendAttribution": false,
+          "senderName": "MediAssist"
+        }
+      },
+      "type": "n8n-nodes-base.gmailTool",
+      "typeVersion": 2.2,
+      "position": [
+        -80,
+        896
+      ],
+      "id": "9e3a6f43-1664-4827-92bd-6a196b243d47",
+      "name": "Send email",
+      "webhookId": "73344627-98f1-4122-9b9b-f93cf97daad2",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "IUHQOJhXtuJ52Tmn",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $('Telegram Trigger1').item.json.message.photo[0].file_id }}",
+                    "rightValue": "",
+                    "operator": {
+                      "type": "string",
+                      "operation": "exists",
+                      "singleValue": true
+                    },
+                    "id": "768be3c1-efbf-450a-9c9d-171dc1c4c2d5"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "photo"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "1fc61e3d-1cc0-49ea-9972-96ea3d4459a6",
+                    "leftValue": "={{ $('Telegram Trigger1').item.json.message.text }}",
+                    "rightValue": "",
+                    "operator": {
+                      "type": "string",
+                      "operation": "exists",
+                      "singleValue": true
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Text"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "cde5c39f-65dd-4a97-b09a-f6c405d81c7f",
+                    "leftValue": "={{ $('Telegram Trigger1').item.json.message.voice.file_id }}",
+                    "rightValue": "",
+                    "operator": {
+                      "type": "string",
+                      "operation": "exists",
+                      "singleValue": true
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "voice"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "0c92e0e5-c97f-45ee-8dd5-3fd286c0469e",
+                    "leftValue": "={{ $('Telegram Trigger1').item.json.message.document.file_id }}",
+                    "rightValue": "",
+                    "operator": {
+                      "type": "string",
+                      "operation": "exists",
+                      "singleValue": true
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "document"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        -192,
+        496
+      ],
+      "id": "363a245a-2e04-4b71-8c2e-31e4fa23fb4d",
+      "name": "Switch1",
+      "alwaysOutputData": true,
+      "retryOnFail": true,
+      "maxTries": 5,
+      "waitBetweenTries": 100,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {},
+      "type": "@n8n/n8n-nodes-langchain.toolWikipedia",
+      "typeVersion": 1,
+      "position": [
+        -1440,
+        1104
+      ],
+      "id": "784d0994-4dfa-4478-b444-5aa317e4c9e3",
+      "name": "Wikipedia"
+    },
+    {
+      "parameters": {
+        "sessionIdType": "customKey",
+        "sessionKey": "={{ $('Telegram Trigger1').item.json.message.chat.id }}",
+        "contextWindowLength": 10
+      },
+      "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+      "typeVersion": 1.3,
+      "position": [
+        -1232,
+        1136
+      ],
+      "id": "f2758785-ee60-42f4-8c89-659c9a1c86da",
+      "name": "Simple Memory1"
+    },
+    {
+      "parameters": {
+        "filePath": "/data/pdf.pdf"
+      },
+      "name": "Read Binary File",
+      "type": "n8n-nodes-base.readBinaryFile",
+      "position": [
+        -2176,
+        560
+      ],
+      "typeVersion": 1,
+      "id": "472f6960-cb78-4500-af7d-335c57104b46",
+      "alwaysOutputData": true,
+      "retryOnFail": true,
+      "waitBetweenTries": 100,
+      "maxTries": 5,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {},
+      "name": "Read PDF",
+      "type": "n8n-nodes-base.readPDF",
+      "position": [
+        -1984,
+        560
+      ],
+      "typeVersion": 1,
+      "id": "708ad3eb-e9a0-40ea-a809-49db50cfe33e",
+      "alwaysOutputData": true,
+      "retryOnFail": true,
+      "maxTries": 5,
+      "waitBetweenTries": 100,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "content": "Telegram trigger event\nHow integrate your API of Telegram in it \nStep 1: Go to your Telegram account \nStep 2: Search for Bot father \nStep 3: Click on in the message section \nStep 4: Write \"/\"\nStep 5: You see in the top of the section create a new bot \nStep 6: Click on it of all name name your bot and send it \nStep 7: Then your name_bot write \nStep 8: Now it give you your api key \nStep 9: Set in this field just copy and paste your api key in it",
+        "height": 416,
+        "width": 400
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -3424,
+        304
+      ],
+      "typeVersion": 1,
+      "id": "91567ab7-a5e6-4c37-ad32-4daf30e45c6c",
+      "name": "Sticky Note1"
+    },
+    {
+      "parameters": {
+        "content": "Only double tap on it it automatically add API keys",
+        "height": 624
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -2752,
+        272
+      ],
+      "typeVersion": 1,
+      "id": "f7f38108-ddfd-452a-994a-4a4833cd3a45",
+      "name": "Sticky Note2"
+    },
+    {
+      "parameters": {
+        "content": "🔐 Complete Guide: How to Add Google Sheets Credentials in n8n\nFor Complete Beginners - Step-by-Step with Screenshots Instructions\n\n📋 What You'll Need Before Starting\n\nA Google account (Gmail)\nAccess to your n8n workflow\n15-20 minutes of time\nInternet connection\n\n\n🎯 Overview: What We're Going to Do\nWe need to create special \"keys\" (called OAuth credentials) that allow n8n to safely access your Google Sheets. Think of it like getting a special pass card to enter a building.\nThe process has 2 main parts:\n\nPart A: Set up credentials in Google Cloud Console (10-15 minutes)\nPart B: Connect those credentials in n8n (5 minutes)\n\n\nPART A: Google Cloud Console Setup\nStep 1: Go to Google Cloud Console\n\nOpen your web browser\nGo to: https://console.cloud.google.com\nSign in with your Google account (the same one you use for Google Sheets)\n\n\nStep 2: Create a New Project\nWhat is a project? Think of it as a folder that holds all your settings for this connection.\n\nAt the top of the page, you'll see a dropdown menu next to \"Google Cloud\"\nClick on the dropdown (it might say \"Select a project\")\nA popup window will appear\nClick the \"NEW PROJECT\" button (top right of popup)\nFill in the details:\n\nProject name: Type something like \"n8n Google Sheets Integration\" or \"My n8n Project\"\nLocation: Leave as default (or select your organization if you have one)\n\n\nClick the \"CREATE\" button\nWait 10-20 seconds for Google to create your project\nThe page will automatically switch to your new project\n\n💡 Note: The project name is just for you to remember what it's for. Choose any name that makes sense to you.\n\nStep 3: Enable Google Sheets API\nWhy do we need this? You need to tell Google Cloud that you want to use the Google Sheets service.\n\nOn the left sidebar, click on \"APIs & Services\"\nThen click on \"Library\"\nYou'll see a search bar at the top\nType: \"Google Sheets API\"\nClick on the \"Google Sheets API\" result (it should be the first one)\nClick the blue \"ENABLE\" button\nWait a few seconds - you'll see a confirmation that it's enabled\n\n✅ You've now activated Google Sheets API for your project!\n\nStep 4: Configure OAuth Consent Screen\nWhat is this? This is the screen users see when they connect to Google. We need to set it up.\n\nOn the left sidebar, click \"OAuth consent screen\"\nYou'll see two options: Internal or External\n\nChoose \"External\" (this allows any Google account to connect)\nEven if you're the only user, choose External - it's easier\n\n\nClick the \"CREATE\" button\n\nNow fill in the form:\nPage 1: App Information\n\nApp name: Type \"n8n Workflow\" or any name you like\nUser support email: Select your email from the dropdown\nApp logo: Leave blank (optional)\nApp domain: Leave blank (optional)\nAuthorized domains: Leave blank\nDeveloper contact information: Type your email address again\nClick \"SAVE AND CONTINUE\" at the bottom\n\nPage 2: Scopes\n\nJust click \"SAVE AND CONTINUE\" (don't add anything)\n\nPage 3: Test users\n\nClick \"+ ADD USERS\"\nType your email address (the one you'll use to connect in n8n)\nClick \"ADD\"\nClick \"SAVE AND CONTINUE\"\n\nPage 4: Summary\n\nReview everything\nClick \"BACK TO DASHBOARD\"\n\n🎉 OAuth Consent Screen is now configured!\n\nStep 5: Publish Your App (Important!)\nWhy? If you don't publish, your credentials will expire after 7 days.\n\nOn the OAuth consent screen dashboard, you'll see a yellow box that says \"Testing\"\nClick the \"PUBLISH APP\" button\nA confirmation dialog will appear\nClick \"CONFIRM\"\nThe status will change from \"Testing\" to \"In production\"\n\n⚠️ Important: Don't skip this step! If your app stays in \"Testing\" mode, your credentials will stop working after 7 days.\n\nStep 6: Create OAuth Credentials (The Important Part!)\nThis is where we get the Client ID and Client Secret - the two \"keys\" n8n needs.\nFirst, get your OAuth Redirect URL from n8n:\n\nGo to your n8n workflow in another browser tab\nAdd a Google Sheets node to your workflow (or open an existing one)\nClick on the \"Credential to connect with\" dropdown\nClick \"- Create New Credential -\"\nYou'll see a field called \"OAuth Redirect URL\"\nCOPY THIS ENTIRE URL - it will look something like:\n\nhttps://your-n8n-instance.com/rest/oauth2-credential/callback\nOR http://localhost:5678/rest/oauth2-credential/callback (if running locally)\n\n\nKeep this n8n tab open - we'll come back to it\n\nNow, back to Google Cloud Console:\n\nOn the left sidebar, click \"Credentials\"\nAt the top, click \"+ CREATE CREDENTIALS\"\nSelect \"OAuth client ID\" from the dropdown\nYou'll see a form:\n\nFill in the OAuth client form:\n\nApplication type: Select \"Web application\" from dropdown\nName: Type \"n8n Client\" or anything you'll remember\nAuthorized JavaScript origins: Leave blank (not needed)\nAuthorized redirect URIs:\n\nClick \"+ ADD URI\"\nPASTE the OAuth Redirect URL you copied from n8n (from step above)\nMake sure you paste the COMPLETE URL exactly as shown in n8n\nDouble-check there are no extra spaces before or after\n\n\nClick \"CREATE\" at the bottom\n\n\nStep 7: Copy Your Client ID and Client Secret\n🎉 Success! A popup will appear with your credentials:\nYou'll see:\n\nYour Client ID - a long string of letters and numbers\nYour Client Secret - another string of letters and numbers\n\n⚠️ CRITICAL STEP - DO THIS NOW:\n\nCopy the Client ID and paste it somewhere safe (like Notepad or a password manager)\nCopy the Client Secret and paste it somewhere safe\n⚠️ WARNING: Once you close this popup, you can NEVER see the Client Secret again! You'll have to create new credentials.\n\n💡 Pro tip: Don't close the popup until you've saved both values and tested them in n8n.\n\nPART B: Connect Credentials in n8n\nStep 8: Add Credentials to n8n\nNow that you have your Client ID and Client Secret, let's add them to n8n:\n\nGo back to your n8n workflow tab\nYou should still have the Google Sheets credential creation screen open\nIf not, add a Google Sheets node and create a new credential\n\nFill in the n8n credential form:\n\nClient ID: Paste the Client ID you copied from Google\nClient Secret: Paste the Client Secret you copied from Google\nClick the \"Sign in with Google\" button\n\n\nStep 9: Authorize the Connection\n\nA Google login popup will appear\nSign in with the Google account you want to use\nYou'll see a screen that says \"Google hasn't verified this app\"\n\nThis is normal! Click \"Advanced\"\nThen click \"Go to [your app name] (unsafe)\"\nDon't worry - it's YOUR app, so it's safe!\n\n\nYou'll see a permission screen\nClick \"Allow\" to grant permissions\nThe popup will close automatically\n\n✅ Success! You'll see \"Connected\" or a green checkmark in n8n\n\nStep 10: Test Your Connection\nLet's make sure everything works:\n\nIn your Google Sheets node, you should now see your credential selected\nConfigure the node:\n\nOperation: Select \"Get row(s) in sheet\"\nDocument: Select a Google Sheet from your account (or paste a Google Sheets URL)\nSheet: Select the sheet/tab name\n\n\nClick \"Execute Node\" or \"Test Step\"\nYou should see data from your spreadsheet appear!\n\n🎉 Congratulations! You've successfully connected Google Sheets to n8n!\n\n🚨 Common Issues & Solutions\nIssue 1: \"Access Denied\" Error\nSolution:\n\nGo back to Google Cloud Console\nGo to OAuth consent screen\nCheck that you added yourself as a Test User\nMake sure you published the app (Step 5)\n\nIssue 2: \"Redirect URI Mismatch\"\nSolution:\n\nThe OAuth Redirect URL in Google Cloud must EXACTLY match what n8n shows\nCheck for:\n\nExtra spaces\nhttp vs https\nTrailing slashes\nPort numbers (like :5678)\n\n\nCopy-paste again to be sure\n\nIssue 3: \"This app is not verified\"\nSolution:\n\nThis is normal! Click \"Advanced\" then \"Go to [app name] (unsafe)\"\nIt's safe because you created the app yourself\nIf you want to remove this warning, you need to go through Google's verification process (not necessary for personal use)\n\nIssue 4: Credentials Stop Working After 7 Days\nSolution:\n\nThis means your app is still in \"Testing\" mode\nGo back to Step 5 and publish your app\nYou'll need to reconnect your credentials after publishing\n\nIssue 5: \"Invalid Client Secret\"\nSolution:\n\nYou may have copied the Client Secret incorrectly\nUnfortunately, you'll need to create new OAuth credentials (repeat Step 6)\nGoogle doesn't let you view the Client Secret again after creation\n\nIssue 6: Can't Find OAuth Redirect URL in n8n\nSolution:\n\nMake sure you're creating a NEW credential (not selecting an existing one)\nThe OAuth Redirect URL appears when you create a new Google Sheets credential\nIf using n8n Cloud, it should appear automatically\nIf self-hosted, check your N8N_HOST environment variable is set correctly\n\n\n📝 Important Notes to Remember\n\nKeep Your Client Secret Safe: Never share it publicly or commit it to GitHub\nOne Credential Set for All Google Services: You can use the same Client ID and Secret for Google Drive, Gmail, Calendar, etc.\nPublish Your App: Always publish (Step 5) to avoid 7-day expiration\nAdd Yourself as Test User: Required for External apps\nExact URL Matching: The redirect URI must match exactly between Google and n8n\n\n\n🎯 Quick Reference: What Goes Where\nItemWhere to Find ItWhere to Use ItOAuth Redirect URLn8n credential creation screenGoogle Cloud Console → Credentials → Authorized redirect URIsClient IDGoogle Cloud Console (after creating OAuth client)n8n credential formClient SecretGoogle Cloud Console (after creating OAuth client)n8n credential formProject NameYou choose itGoogle Cloud Console (Step 2)Test User EmailYour Google account emailOAuth consent screen → Test users\n\n🔄 Need to Start Over?\nIf something goes wrong, you can always:\n\nDelete the credential in n8n\nIn Google Cloud Console, go to Credentials\nClick the trash icon next to your OAuth client\nStart again from Step 6\n\n\n✅ Checklist: Did You Complete Everything?\n\n Created a Google Cloud project\n Enabled Google Sheets API\n Configured OAuth consent screen\n Added yourself as a test user\n Published your app (not in Testing mode)\n Created OAuth credentials\n Copied both Client ID and Client Secret\n Added the correct redirect URI from n8n\n Pasted credentials into n8n\n Successfully signed in with Google\n Tested the connection with a real Google Sheet\n\n\n🆘 Still Need Help?\nIf you're still stuck:\n\nRe-read the error message carefully - it usually tells you what's wrong\nCheck the Common Issues section above\nTry creating new credentials from Step 6\nVisit n8n Community Forum: https://community.n8n.io\nCheck n8n Documentation: https://docs.n8n.io\n\n\n🎓 What You Learned\nYou now know how to:\n\nCreate a Google Cloud project\nEnable APIs in Google Cloud\nSet up OAuth consent screens\nGenerate OAuth credentials\nConnect third-party apps to Google services\nTroubleshoot common authentication issues\n\nThese skills work for connecting ANY app to Google services, not just n8n!\n\nDocument Version: 1.0\nLast Updated: February 2026\nTested with: n8n (Cloud & Self-hosted), Google Cloud Console\n\n⭐ Pro Tip: Bookmark this guide! You might need it when connecting other Google services like Gmail, Calendar, or Drive to n8n. The process is exactly the same!",
+        "height": 352,
+        "width": 1168,
+        "color": 4
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -928,
+        1072
+      ],
+      "typeVersion": 1,
+      "id": "dcadb006-0755-45f1-beb6-75ece03359a8",
+      "name": "Sticky Note3"
+    },
+    {
+      "parameters": {
+        "content": "Cleaning of data This nods clean data and simplify and one of the best output",
+        "height": 496,
+        "color": 3
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -32,
+        240
+      ],
+      "typeVersion": 1,
+      "id": "6be4fd21-9df4-4e02-811e-da007805b926",
+      "name": "Sticky Note"
+    },
+    {
+      "parameters": {
+        "content": "Only double tap on it it automatically add API keys",
+        "height": 624
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        688,
+        192
+      ],
+      "typeVersion": 1,
+      "id": "1d5ad981-4c2c-4d75-97b6-255da64c7c7f",
+      "name": "Sticky Note4"
+    },
+    {
+      "parameters": {
+        "content": "Google Sheets Sample Data\n\nAnd this is the sample data google sheet that you can use for understanding and checking deploying your actual data\n\nhttps://docs.google.com/spreadsheets/d/1Oqpfrn32RTfq0qM1xWD_4aTSNmPG-zZNjs4UPLHj2rU/edit?usp=sharing",
+        "height": 224,
+        "width": 288
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -3376,
+        48
+      ],
+      "typeVersion": 1,
+      "id": "ab82c485-34e9-4335-a518-12542dba8ba9",
+      "name": "Sticky Note5"
+    },
+    {
+      "parameters": {
+        "model": "xiaomi/mimo-v2-flash",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenRouter",
+      "typeVersion": 1,
+      "position": [
+        -1680,
+        1120
+      ],
+      "id": "cfe9b7e0-c23d-45cb-b7bf-9d9e386c10ff",
+      "name": "OpenRouter Chat Model",
+      "credentials": {
+        "openRouterApi": {
+          "id": "I2Dnc8m9MGVJLYYe",
+          "name": "OpenRouter account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "outputFieldName": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Output_Field_Name', ``, 'string') }}",
+        "options": {
+          "timezone": "Asia/Karachi"
+        }
+      },
+      "type": "n8n-nodes-base.dateTimeTool",
+      "typeVersion": 2,
+      "position": [
+        736,
+        1184
+      ],
+      "id": "36c0660c-f547-4e4b-a17e-c3685b1ec76a",
+      "name": "Date & Time tool"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Get the AI Agent output\nconst aiOutput = $input.first().json.output;\n\n// Function to clean the text\nfunction cleanAIResponse(text) {\n  let cleaned = text;\n  \n  // Remove all asterisks (single, double, or multiple)\n  cleaned = cleaned.replace(/\\*+/g, '');\n  \n  // Remove markdown headers (##, ###, etc.)\n  cleaned = cleaned.replace(/^#+\\s*/gm, '');\n  \n  // Remove markdown bold (**text** or __text__)\n  cleaned = cleaned.replace(/\\*\\*(.+?)\\*\\*/g, '$1');\n  cleaned = cleaned.replace(/__(.+?)__/g, '$1');\n  \n  // Remove markdown italic (*text* or _text_)\n  cleaned = cleaned.replace(/\\*(.+?)\\*/g, '$1');\n  cleaned = cleaned.replace(/_(.+?)_/g, '$1');\n  \n  // Remove markdown strikethrough (~~text~~)\n  cleaned = cleaned.replace(/~~(.+?)~~/g, '$1');\n  \n  // Remove markdown code blocks (```text```)\n  cleaned = cleaned.replace(/```[\\s\\S]*?```/g, '');\n  cleaned = cleaned.replace(/`(.+?)`/g, '$1');\n  \n  // Remove extra spaces at line starts\n  cleaned = cleaned.replace(/^\\s+/gm, '');\n  \n  // Remove multiple consecutive blank lines (keep max 2)\n  cleaned = cleaned.replace(/\\n{3,}/g, '\\n\\n');\n  \n  // Trim leading and trailing whitespace\n  cleaned = cleaned.trim();\n  \n  return cleaned;\n}\n\n// Clean the response\nconst cleanedOutput = cleanAIResponse(aiOutput);\n\n// Return the cleaned output\nreturn {\n  json: {\n    output: cleanedOutput,\n    original: aiOutput  // Keep original in case you need it\n  }\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        448,
+        784
+      ],
+      "id": "6c11d3e9-6f9c-4c85-84b8-7ec4bb1042d4",
+      "name": "Code in JavaScript4",
+      "alwaysOutputData": false,
+      "retryOnFail": false,
+      "maxTries": 5,
+      "waitBetweenTries": 100,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Get the AI Agent output\nconst aiOutput = $input.item.json.output;\n\n// Function to clean the text\nfunction cleanAIResponse(text) {\n  let cleaned = text;\n  \n  // Remove all asterisks (single, double, or multiple)\n  cleaned = cleaned.replace(/\\*+/g, '');\n  \n  // Remove markdown headers (##, ###, etc.)\n  cleaned = cleaned.replace(/^#+\\s*/gm, '');\n  \n  // Remove markdown bold (**text** or __text__)\n  cleaned = cleaned.replace(/\\*\\*(.+?)\\*\\*/g, '$1');\n  cleaned = cleaned.replace(/__(.+?)__/g, '$1');\n  \n  // Remove markdown italic (*text* or _text_)\n  cleaned = cleaned.replace(/\\*(.+?)\\*/g, '$1');\n  cleaned = cleaned.replace(/_(.+?)_/g, '$1');\n  \n  // Remove markdown strikethrough (~~text~~)\n  cleaned = cleaned.replace(/~~(.+?)~~/g, '$1');\n  \n  // Remove markdown code blocks (```text```)\n  cleaned = cleaned.replace(/```[\\s\\S]*?```/g, '');\n  cleaned = cleaned.replace(/`(.+?)`/g, '$1');\n  \n  // Remove extra spaces at line starts\n  cleaned = cleaned.replace(/^\\s+/gm, '');\n  \n  // Remove multiple consecutive blank lines (keep max 2)\n  cleaned = cleaned.replace(/\\n{3,}/g, '\\n\\n');\n  \n  // Trim leading and trailing whitespace\n  cleaned = cleaned.trim();\n  \n  return cleaned;\n}\n\n// Clean the response\nconst cleanedOutput = cleanAIResponse(aiOutput);\n\n// Return the cleaned output\nreturn {\n  json: {\n    output: cleanedOutput,\n    original: aiOutput  // Keep original in case you need it\n  }\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        32,
+        384
+      ],
+      "id": "32bb8719-806f-4571-93d7-04ab38c2653c",
+      "name": "Code in JavaScript5",
+      "alwaysOutputData": false,
+      "retryOnFail": false,
+      "maxTries": 5,
+      "waitBetweenTries": 100,
+      "onError": "continueRegularOutput"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Appointment System": {
+      "main": [
+        [
+          {
+            "node": "Switch1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "PrepareInput": {
+      "main": [
+        [
+          {
+            "node": "Text message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "create_patient": {
+      "ai_tool": [
+        [
+          {
+            "node": "Appointment System",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Calculator": {
+      "ai_tool": [
+        [
+          {
+            "node": "Appointment System",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "get_last_patient_id": {
+      "ai_tool": [
+        [
+          {
+            "node": "Appointment System",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "get_clinics": {
+      "ai_tool": [
+        [
+          {
+            "node": "Appointment System",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "get_doctors": {
+      "ai_tool": [
+        [
+          {
+            "node": "Appointment System",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "find_patient": {
+      "ai_tool": [
+        [
+          {
+            "node": "Appointment System",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "create_appointment": {
+      "ai_tool": [
+        [
+          {
+            "node": "Appointment System",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "get_availability": {
+      "ai_tool": [
+        [
+          {
+            "node": "Appointment System",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "find_last_entry_id": {
+      "ai_tool": [
+        [
+          {
+            "node": "Appointment System",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If": {
+      "main": [
+        [
+          {
+            "node": "Appointment System",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Switch": {
+      "main": [
+        [
+          {
+            "node": "Image input",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Get a file",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Voice input",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "PrepareInput",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Audio": {
+      "main": [
+        [
+          {
+            "node": "Code",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code": {
+      "main": [
+        [
+          {
+            "node": "Voice Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If PDF File": {
+      "main": [
+        [],
+        [
+          {
+            "node": "Read Binary File",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Document Prompt": {
+      "main": [
+        [
+          {
+            "node": "If",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Analyze an image": {
+      "main": [
+        [
+          {
+            "node": "Image message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Telegram Trigger1": {
+      "main": [
+        [
+          {
+            "node": "Switch",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Text message": {
+      "main": [
+        [
+          {
+            "node": "If",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Voice message": {
+      "main": [
+        [
+          {
+            "node": "If",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Image message": {
+      "main": [
+        [
+          {
+            "node": "If",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Voice input": {
+      "main": [
+        [
+          {
+            "node": "Transcribe voice recording",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Image input": {
+      "main": [
+        [
+          {
+            "node": "Analyze an image",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Transcribe voice recording": {
+      "main": [
+        [
+          {
+            "node": "Voice message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get a file": {
+      "main": [
+        [
+          {
+            "node": "If PDF File",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Delete an event": {
+      "ai_tool": [
+        [
+          {
+            "node": "Appointment System",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create an event": {
+      "ai_tool": [
+        [
+          {
+            "node": "Appointment System",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update an event": {
+      "ai_tool": [
+        [
+          {
+            "node": "Appointment System",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send email": {
+      "ai_tool": [
+        [
+          {
+            "node": "Appointment System",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Switch1": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript4",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Code in JavaScript4",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Code in JavaScript5",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Code in JavaScript4",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wikipedia": {
+      "ai_tool": [
+        [
+          {
+            "node": "Appointment System",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Simple Memory1": {
+      "ai_memory": [
+        [
+          {
+            "node": "Appointment System",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Binary File": {
+      "main": [
+        [
+          {
+            "node": "Read PDF",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read PDF": {
+      "main": [
+        [
+          {
+            "node": "Document Prompt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenRouter Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Appointment System",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Date & Time tool": {
+      "ai_tool": [
+        [
+          {
+            "node": "Appointment System",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript4": {
+      "main": [
+        [
+          {
+            "node": "Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript5": {
+      "main": [
+        [
+          {
+            "node": "Generate Audio",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "c95d15a3-6189-4ea5-b200-01af3132a212",
+  "meta": {
+    "instanceId": "ab6f4bc8898b55e7b4feae65d8f639a7e297c7dc7d4324643d7d06426a7cad8f"
+  },
+  "id": "ynwYRJsVNmUUkfba",
+  "tags": []
+}
