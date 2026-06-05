@@ -1,0 +1,1197 @@
+{
+  "name": "Complete workflow of data analysis",
+  "nodes": [
+    {
+      "parameters": {
+        "jsCode": "// ---------------------------------------------------------------\n// UNIVERSAL Data Cleaning – final fix (dedup BEFORE metadata)\n// ---------------------------------------------------------------\n\nfunction normaliseKeys(obj) {\n  const newObj = {};\n  for (const [key, value] of Object.entries(obj)) {\n    const cleanKey = key\n      .toLowerCase()\n      .replace(/[\\s\\-]+/g, '_')\n      .replace(/[^a-z0-9_]/g, '');\n    newObj[cleanKey] = value;\n  }\n  return newObj;\n}\n\nfunction normalizeNumber(value) {\n  if (typeof value === 'number') return value;\n  if (typeof value === 'string') {\n    const cleaned = value.replace(/[^\\d.-]/g, '');\n    const num = parseFloat(cleaned);\n    return isNaN(num) ? null : num;\n  }\n  return null;\n}\n\nfunction isValidDate(d) {\n  if (d instanceof Date && !isNaN(d)) return true;\n  if (typeof d === 'string' && !isNaN(Date.parse(d))) return true;\n  return false;\n}\n\nfunction normalizeDate(value) {\n  try {\n    const d = new Date(value);\n    if (isNaN(d.getTime())) return null;\n    return d.toISOString().split('T')[0];\n  } catch { return null; }\n}\n\nconst inputItems = $input.all();\nif (!inputItems || inputItems.length === 0) {\n  console.log('DATA CLEANING: No input data.');\n  return [];\n}\n\nconst firstRow = normaliseKeys(inputItems[0].json);\nconst allKeys = Object.keys(firstRow);\n\nconst numericCols = [];\nconst dateCols = [];\nconst textCols = [];\n\nfor (const key of allKeys) {\n  const sampleValues = inputItems.slice(0, 10)\n    .map(i => normaliseKeys(i.json)[key])\n    .filter(v => v !== null && v !== undefined && v !== '');\n\n  if (sampleValues.length === 0) continue;\n\n  const isIdColumn = key.toLowerCase().includes('id');\n\n  const dateCount = sampleValues.filter(v =>\n    typeof v === 'string' && isValidDate(v) && v.length > 5\n  ).length;\n  const numericCount = sampleValues.filter(v =>\n    typeof v === 'number' || (typeof v === 'string' && !isNaN(parseFloat(v.replace(/[^\\d.-]/g, ''))))\n  ).length;\n\n  if (!isIdColumn && dateCount / sampleValues.length > 0.7) {\n    dateCols.push(key);\n  } else if (!isIdColumn && numericCount / sampleValues.length > 0.7) {\n    numericCols.push(key);\n  } else {\n    textCols.push(key);\n  }\n}\n\nconsole.log('DATA CLEANING: Auto-detected columns:');\nconsole.log('  Numeric:', numericCols);\nconsole.log('  Date:', dateCols);\nconsole.log('  Text:', textCols);\n\nconst cleanedItems = [];\nconst removedItems = [];\nconst dedupMap = new Map();\n\nfor (let i = 0; i < inputItems.length; i++) {\n  let raw = normaliseKeys(inputItems[i].json);\n\n  // Convert numeric columns\n  for (const col of numericCols) {\n    if (raw[col] !== undefined && raw[col] !== null && raw[col] !== '') {\n      const num = normalizeNumber(raw[col]);\n      raw[col] = num;\n    }\n  }\n\n  // Normalize date columns\n  for (const col of dateCols) {\n    if (raw[col] !== undefined && raw[col] !== null && raw[col] !== '') {\n      raw[col] = normalizeDate(raw[col]);\n    }\n  }\n\n  // Trim text columns\n  for (const col of textCols) {\n    if (typeof raw[col] === 'string') {\n      raw[col] = raw[col].trim().replace(/[\\u200B-\\u200D\\uFEFF]/g, '');\n      if (raw[col].length > 500) raw[col] = raw[col].substring(0, 500);\n    }\n  }\n\n  // Skip completely empty rows\n  const nonEmptyValues = Object.values(raw).filter(v =>\n    v !== null && v !== undefined && v !== ''\n  );\n  if (nonEmptyValues.length === 0) {\n    removedItems.push({ index: i, reason: 'Completely empty row' });\n    continue;\n  }\n\n  // ---------- DEDUPLICATION (before adding metadata) ----------\n  const rowKey = JSON.stringify(raw);\n  if (dedupMap.has(rowKey)) {\n    removedItems.push({ index: i, reason: 'Exact duplicate row' });\n    continue;\n  }\n  dedupMap.set(rowKey, true);\n\n  // Now add metadata columns\n  raw._numeric_cols = numericCols.join(',');\n  raw._date_cols = dateCols.join(',');\n  raw._text_cols = textCols.join(',');\n\n  cleanedItems.push({ json: raw });\n}\n\nconsole.log('DATA CLEANING SUMMARY:', {\n  input: inputItems.length,\n  output: cleanedItems.length,\n  removed: removedItems.length,\n  reasons: removedItems.slice(0, 5).map(r => r.reason)\n});\n\nreturn cleanedItems;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -4752,
+        -240
+      ],
+      "id": "4e050124-9037-47a5-bf64-372bb5e58317",
+      "name": "Data Cleaning1"
+    },
+    {
+      "parameters": {
+        "jsCode": "// ---------------------------------------------------------------\n// UNIVERSAL Data Transformation – final, with logging\n// ---------------------------------------------------------------\nconst items = $input.all();\nif (!items || items.length === 0) {\n  console.log('TRANSFORMATION: No input data.');\n  return [];\n}\n\nconst rows = items.map(i => ({ ...i.json }));\nconst firstRow = rows[0];\nconst numericCols = (firstRow._numeric_cols || '').split(',').filter(c => c.trim());\nconst dateCols = (firstRow._date_cols || '').split(',').filter(c => c.trim());\n\nconsole.log('TRANSFORMATION: All numeric cols:', numericCols);\n\n// --- FILTER: remove any column that contains \"id\" OR starts with \"_year\"/\"_month\" ---\nconst metricCols = numericCols.filter(col => {\n  const lower = col.toLowerCase();\n  if (lower.includes('id')) return false;\n  if (lower.startsWith('_year') || lower.startsWith('_month')) return false;\n  return true;\n});\n\nconsole.log('TRANSFORMATION: Metric columns used for _total:', metricCols);\n\nconst output = rows.map((row, idx) => {\n  const newRow = { ...row };\n\n  const vals = metricCols\n    .map(col => row[col])\n    .filter(v => typeof v === 'number' && !isNaN(v));\n\n  if (vals.length > 0) {\n    newRow._total = vals.reduce((a, b) => a + b, 0);\n    newRow._average = newRow._total / vals.length;\n    newRow._min_value = Math.min(...vals);\n    newRow._max_value = Math.max(...vals);\n    newRow._range = newRow._max_value - newRow._min_value;\n  }\n\n  for (const col of dateCols) {\n    if (row[col]) {\n      try {\n        const yr = new Date(row[col]).getFullYear();\n        if (!isNaN(yr)) {\n          newRow._year = yr;\n          newRow._month = new Date(row[col]).getMonth() + 1;\n          break;\n        }\n      } catch (e) {}\n    }\n  }\n\n  if (row.first_name && row.last_name) {\n    newRow.full_name = `${row.first_name} ${row.last_name}`;\n  }\n\n  return { json: newRow };\n});\n\nconsole.log(`TRANSFORMATION: Enriched ${output.length} rows.`);\nreturn output;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -3728,
+        -240
+      ],
+      "id": "df30b429-f358-449d-98e5-b0d7d94f50c8",
+      "name": "Data Transformation1"
+    },
+    {
+      "parameters": {
+        "jsCode": "// ---------------------------------------------------------------\n// UNIVERSAL Missing Data Handler — auto-detects all columns\n// ---------------------------------------------------------------\n \nfunction median(arr) {\n  if (!arr.length) return null;\n  const sorted = [...arr].sort((a, b) => a - b);\n  const mid = Math.floor(sorted.length / 2);\n  return sorted.length % 2 !== 0 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;\n}\n \nfunction mode(arr) {\n  if (!arr.length) return null;\n  const freq = {};\n  let maxFreq = 0, modeVal = arr[0];\n  for (const val of arr) {\n    freq[val] = (freq[val] || 0) + 1;\n    if (freq[val] > maxFreq) { maxFreq = freq[val]; modeVal = val; }\n  }\n  return modeVal;\n}\n \nfunction isMissing(value) {\n  return value === null || value === undefined ||\n    (typeof value === 'string' && value.trim() === '');\n}\n \nconst items = $input.all();\nconst rows = items.map(item => item.json);\n \nif (!rows.length) return [];\n \n// Auto-detect column types from metadata\nconst numericCols = (rows[0]._numeric_cols || '').split(',').filter(c => c.trim());\nconst textCols = (rows[0]._text_cols || '').split(',').filter(c => c.trim());\n \n// Build imputation values for numeric columns (use median)\nconst imputeValues = {};\nfor (const col of numericCols) {\n  const vals = rows\n    .map(r => r[col])\n    .filter(v => typeof v === 'number' && !isNaN(v));\n  if (vals.length > 0) imputeValues[col] = median(vals);\n}\n \n// Build imputation values for text columns (use mode)\nfor (const col of textCols) {\n  const vals = rows\n    .map(r => r[col])\n    .filter(v => typeof v === 'string' && v.trim() !== '');\n  if (vals.length > 0) imputeValues[col] = mode(vals);\n}\n \nconst stats = { imputed: {}, flagged: 0 };\nconst processedRows = [];\n \nfor (const row of rows) {\n  const newRow = { ...row };\n \n  // Fill missing numeric columns with median\n  for (const col of numericCols) {\n    if (isMissing(row[col]) && imputeValues[col] !== undefined) {\n      newRow[col] = imputeValues[col];\n      stats.imputed[col] = (stats.imputed[col] || 0) + 1;\n    }\n  }\n \n  // Fill missing text columns with mode\n  for (const col of textCols) {\n    if (isMissing(row[col]) && imputeValues[col] !== undefined) {\n      newRow[col] = imputeValues[col];\n      stats.imputed[col] = (stats.imputed[col] || 0) + 1;\n    }\n  }\n \n  processedRows.push({ json: newRow });\n}\n \nconsole.log('MISSING DATA SUMMARY:', {\n  inputCount: rows.length,\n  outputCount: processedRows.length,\n  imputedCounts: stats.imputed,\n  numericColsHandled: numericCols.length,\n  textColsHandled: textCols.length,\n});\n \nreturn processedRows;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -4160,
+        -240
+      ],
+      "id": "8b77abdf-ea78-4dfb-ae6c-4f38981033c0",
+      "name": "Handling Missing Data1"
+    },
+    {
+      "parameters": {
+        "jsCode": "// ---------------------------------------------------------------\n// UNIVERSAL Statistical & Probability Analyzer — fully auto-detecting\n// ---------------------------------------------------------------\n\nconst items = $input.all();\nif (!items || items.length === 0) {\n  console.log('STATISTICAL ANALYZER: No input data.');\n  return [];\n}\n\nconsole.log(`STATISTICAL ANALYZER: Received ${items.length} items.`);\n\n// Normalize keys (just in case)\nconst normalizeKeys = obj => {\n  const out = {};\n  for (const [k, v] of Object.entries(obj)) {\n    out[k.toLowerCase().replace(/[\\s\\-]+/g, '_').replace(/[^a-z0-9_]/g, '')] = v;\n  }\n  return out;\n};\nconst rows = items.map(item => normalizeKeys(item.json));\n\n// Auto-detect numeric columns\nconst numCols = Object.keys(rows[0] || {}).filter(key => typeof rows[0][key] === 'number');\nconsole.log('STATISTICAL ANALYZER: Numeric columns detected:', numCols);\n\n// ---------- Utility functions (same as before) ----------\nfunction welford(values) {\n  let count = 0, mean = 0, m2 = 0;\n  for (const x of values) { count++; const delta = x - mean; mean += delta / count; const delta2 = x - mean; m2 += delta * delta2; }\n  if (count < 2) return { mean, variance: 0, stddev: 0, count };\n  const variance = m2 / (count - 1);\n  return { mean, variance, stddev: Math.sqrt(variance), count };\n}\nfunction median(arr) { if (!arr.length) return null; const s = [...arr].sort((a,b)=>a-b); const m = Math.floor(s.length/2); return s.length%2 ? s[m] : (s[m-1]+s[m])/2; }\nfunction mode(arr) { if (!arr.length) return null; const freq = {}; let mx=0, mv=arr[0]; for (const v of arr) { freq[v]=(freq[v]||0)+1; if(freq[v]>mx){mx=freq[v];mv=v;} } return mv; }\nfunction quantiles(sorted, qs) {\n  const n = sorted.length;\n  if (n === 0) return {};\n  const r = {};\n  for (const q of qs) { const pos = (q/100)*(n-1); const lo = Math.floor(pos); const hi = Math.ceil(pos); r[q] = (lo===hi) ? sorted[lo] : sorted[lo] + (pos-lo)*(sorted[hi]-sorted[lo]); }\n  return r;\n}\n\nconst statsReport = {};\nconst columnData = {};\n\n// For every numeric column, compute statistics and enrich\nfor (const col of numCols) {\n  const vals = rows.map(r => r[col]).filter(v => typeof v === 'number' && !isNaN(v));\n  if (!vals.length) { statsReport[col] = { error: 'No valid numeric data' }; continue; }\n  columnData[col] = vals;\n\n  const basic = welford(vals);\n  const sorted = [...vals].sort((a,b)=>a-b);\n  const quants = quantiles(sorted, [0,25,50,75,100]);\n  const modeInfo = { value: mode(vals), frequency: 0 };\n\n  statsReport[col] = {\n    count: basic.count,\n    mean: basic.mean,\n    median: quants[50],\n    mode: modeInfo.value,\n    modeFrequency: 0,\n    variance: basic.variance,\n    stddev: basic.stddev,\n    min: quants[0],\n    max: quants[100],\n    range: quants[100]-quants[0],\n    q1: quants[25],\n    q3: quants[75],\n    iqr: quants[75]-quants[25],\n  };\n\n  // Enrich rows with z‑scores, percentiles, outliers\n  const stddev = basic.stddev;\n  if (stddev > 0) {\n    for (const row of rows) {\n      if (typeof row[col] === 'number' && !isNaN(row[col]))\n        row[`${col}_zscore`] = (row[col] - basic.mean) / stddev;\n    }\n  }\n  [10,25,50,75,90].forEach(t => {\n    const cutoff = sorted[Math.floor(sorted.length*t/100)];\n    for (const row of rows) {\n      row[`${col}_ge${t}prc`] = (typeof row[col] === 'number' && row[col] >= cutoff) ? 1 : 0;\n    }\n  });\n  const iqr = quants[75] - quants[25];\n  const lower = quants[25] - 1.5*iqr;\n  const upper = quants[75] + 1.5*iqr;\n  for (const row of rows) {\n    row[`${col}_outlier`] = (typeof row[col] === 'number' && (row[col] < lower || row[col] > upper)) ? 1 : 0;\n  }\n}\n\nconsole.log('STATISTICS REPORT:', JSON.stringify(statsReport, null, 2));\n\n// Return enriched rows (same format as before)\nreturn rows.map(r => ({ json: r }));"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -3536,
+        -240
+      ],
+      "id": "e54e79a2-b28f-40b1-94e8-3ae5e243b532",
+      "name": "Statistical & Probability Analyzer1"
+    },
+    {
+      "parameters": {
+        "jsCode": "// ---------------------------------------------------------------\n// UNIVERSAL Outlier Detection (IQR method) — auto-detects columns\n// ---------------------------------------------------------------\n \nconst items = $input.all();\nconst rows = items.map(item => item.json);\n \nif (!rows.length) return items;\n \n// Auto-detect numeric columns\nconst numericCols = (rows[0]._numeric_cols || '')\n  .split(',')\n  .filter(c => c.trim());\n \nconst multiplier = 1.5; // standard IQR threshold\n \n// Compute Q1, Q3, IQR per column\nconst stats = {};\nfor (const col of numericCols) {\n  const values = rows\n    .map(r => r[col])\n    .filter(v => typeof v === 'number' && !isNaN(v))\n    .sort((a, b) => a - b);\n  if (values.length < 4) continue;\n  const q1 = values[Math.floor(values.length * 0.25)];\n  const q3 = values[Math.floor(values.length * 0.75)];\n  const iqr = q3 - q1;\n  stats[col] = {\n    lower: q1 - multiplier * iqr,\n    upper: q3 + multiplier * iqr\n  };\n}\n \n// Flag outliers\nconst enriched = rows.map(row => {\n  const newRow = { ...row };\n  for (const col of numericCols) {\n    if (stats[col] && typeof row[col] === 'number') {\n      newRow[`${col}_outlier`] = (row[col] < stats[col].lower || row[col] > stats[col].upper) ? 1 : 0;\n    }\n  }\n  return { json: newRow };\n});\n \nconst totalOutliers = enriched.reduce((sum, r) => {\n  return sum + numericCols.filter(col => r.json[`${col}_outlier`] === 1).length;\n}, 0);\n \nconsole.log(`OUTLIER DETECTION: Checked ${numericCols.length} columns, found ${totalOutliers} outlier flags.`);\nreturn enriched;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -3328,
+        -240
+      ],
+      "id": "c925f70f-ec7a-44a2-9605-754f3762c51b",
+      "name": "Outlier Detection1"
+    },
+    {
+      "parameters": {
+        "jsCode": "// ---------------------------------------------------------------\n// UNIVERSAL Correlation Matrix — auto-detects columns\n// ---------------------------------------------------------------\n \nconst items = $input.all();\nconst rows = items.map(item => item.json);\n \nif (!rows.length) return items;\n \n// Auto-detect numeric columns\nconst numericCols = (rows[0]._numeric_cols || '')\n  .split(',')\n  .filter(c => c.trim())\n  .filter(col => {\n    const vals = rows.map(r => r[col]).filter(v => typeof v === 'number');\n    return vals.length >= 2;\n  });\n \nif (numericCols.length < 2) {\n  console.log('CORRELATION: Not enough numeric columns for correlation matrix.');\n  return items;\n}\n \nfunction mean(arr) {\n  return arr.reduce((a, b) => a + b, 0) / arr.length;\n}\n \nfunction pearson(col1, col2) {\n  const pairs = rows\n    .filter(r => typeof r[col1] === 'number' && !isNaN(r[col1]) &&\n                 typeof r[col2] === 'number' && !isNaN(r[col2]));\n  if (pairs.length < 2) return 0;\n  const a = pairs.map(r => r[col1]);\n  const b = pairs.map(r => r[col2]);\n  const ma = mean(a), mb = mean(b);\n  let num = 0, den1 = 0, den2 = 0;\n  for (let i = 0; i < a.length; i++) {\n    const da = a[i] - ma, db = b[i] - mb;\n    num += da * db;\n    den1 += da * da;\n    den2 += db * db;\n  }\n  const den = Math.sqrt(den1 * den2);\n  return den === 0 ? 0 : Math.round((num / den) * 1000) / 1000;\n}\n \n// Build correlation matrix\nconst matrix = {};\nfor (const col1 of numericCols) {\n  matrix[col1] = {};\n  for (const col2 of numericCols) {\n    matrix[col1][col2] = pearson(col1, col2);\n  }\n}\n \nconsole.log('CORRELATION MATRIX:', JSON.stringify(matrix, null, 2));\n \n// Pass data through unchanged\nreturn items;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -2912,
+        -240
+      ],
+      "id": "51c0ef74-320d-4bd5-9e46-62ca793a0535",
+      "name": "Correlation Matrix1"
+    },
+    {
+      "parameters": {
+        "jsCode": "// ---------------------------------------------------------------\n// UNIVERSAL Simple Linear Regression — skips ID columns\n// ---------------------------------------------------------------\nconst items = $input.all();\nconst rows = items.map(item => item.json);\n\nif (!rows.length) return items;\n\n// Use the _numeric_cols list but remove columns that contain \"id\"\nconst numericCols = (rows[0]._numeric_cols || '').split(',').filter(c => c.trim())\n  .filter(col => !col.toLowerCase().includes('id'));\n\nif (numericCols.length < 2) {\n  console.log('REGRESSION: Not enough non-ID numeric columns. Passing data through.');\n  return items;\n}\n\nconst xField = numericCols[0];\nconst yField = numericCols[1];\n\nconsole.log(`REGRESSION: Using xField='${xField}', yField='${yField}'`);\n\nconst points = rows\n  .filter(r => typeof r[xField] === 'number' && !isNaN(r[xField]) &&\n               typeof r[yField] === 'number' && !isNaN(r[yField]))\n  .map(r => [r[xField], r[yField]]);\n\nif (points.length < 2) {\n  console.log('REGRESSION: Not enough valid data points. Passing data through.');\n  return items;\n}\n\nlet sumX = 0, sumY = 0, sumXY = 0, sumX2 = 0, sumY2 = 0;\nfor (const [x, y] of points) {\n  sumX += x; sumY += y; sumXY += x * y; sumX2 += x * x; sumY2 += y * y;\n}\nconst n = points.length;\nconst denominator = n * sumX2 - sumX * sumX;\n\nif (denominator === 0) {\n  console.log('REGRESSION: Cannot compute — all X values are identical.');\n  return items;\n}\n\nconst slope = (n * sumXY - sumX * sumY) / denominator;\nconst intercept = (sumY - slope * sumX) / n;\nconst r2Denom = Math.sqrt((n * sumX2 - sumX * sumX) * (n * sumY2 - sumY * sumY));\nconst r2 = r2Denom === 0 ? 0 : Math.pow((n * sumXY - sumX * sumY) / r2Denom, 2);\n\nconst enriched = rows.map(row => {\n  const newRow = { ...row };\n  if (typeof row[xField] === 'number' && !isNaN(row[xField])) {\n    newRow[`${yField}_predicted`] = Math.round((slope * row[xField] + intercept) * 100) / 100;\n  }\n  return { json: newRow };\n});\n\nconsole.log(`REGRESSION: ${yField} = ${slope.toFixed(4)} * ${xField} + ${intercept.toFixed(2)}, R² = ${r2.toFixed(4)}`);\nreturn enriched;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -2704,
+        -240
+      ],
+      "id": "154918bd-414f-4a37-8a8b-dac40fcdbc98",
+      "name": "Simple Linear Regression1"
+    },
+    {
+      "parameters": {
+        "jsCode": "// ---------------------------------------------------------------\n// UNIVERSAL K-Means Clustering — auto-detects features\n// ---------------------------------------------------------------\n \nconst items = $input.all();\nconst rows = items.map(i => i.json);\nif (!rows.length) return items;\n \n// Auto-detect the two best numeric columns to cluster on\nconst numericCols = (rows[0]._numeric_cols || '').split(',').filter(c => c.trim());\n \n// Use first two numeric columns that have enough data\nlet features = [];\nfor (const col of numericCols) {\n  const valid = rows.filter(r => typeof r[col] === 'number' && !isNaN(r[col]));\n  if (valid.length >= rows.length * 0.5) {\n    features.push(col);\n    if (features.length === 2) break;\n  }\n}\n \n// Need at least 2 features for clustering\nif (features.length < 2) {\n  console.log('CLUSTERING: Not enough numeric columns for clustering. Skipping.');\n  return rows.map(row => ({ json: { ...row, cluster: 0 } }));\n}\n \nconsole.log('CLUSTERING: Using features:', features);\n \nconst k = Math.min(3, Math.floor(rows.length / 3));\nif (k < 2) {\n  return rows.map(row => ({ json: { ...row, cluster: 0 } }));\n}\n \nconst points = rows\n  .map(r => features.map(f => r[f]))\n  .filter(p => p.every(v => typeof v === 'number' && !isNaN(v)));\n \nif (points.length < k) return items;\n \n// Normalize points for better clustering\nconst mins = features.map((_, d) => Math.min(...points.map(p => p[d])));\nconst maxs = features.map((_, d) => Math.max(...points.map(p => p[d])));\nconst normalize = p => p.map((v, d) => maxs[d] === mins[d] ? 0 : (v - mins[d]) / (maxs[d] - mins[d]));\nconst normPoints = points.map(normalize);\n \n// K-means\nconst centroids = normPoints.slice(0, k).map(p => [...p]);\nlet assignments = new Array(normPoints.length).fill(0);\nlet changed = true;\nlet iterations = 0;\n \nwhile (changed && iterations < 100) {\n  changed = false;\n  iterations++;\n  \n  for (let i = 0; i < normPoints.length; i++) {\n    let minDist = Infinity, minIdx = 0;\n    for (let c = 0; c < k; c++) {\n      const dist = normPoints[i].reduce((sum, val, d) => sum + (val - centroids[c][d]) ** 2, 0);\n      if (dist < minDist) { minDist = dist; minIdx = c; }\n    }\n    if (assignments[i] !== minIdx) { assignments[i] = minIdx; changed = true; }\n  }\n  \n  const sums = Array(k).fill(0).map(() => new Array(features.length).fill(0));\n  const counts = Array(k).fill(0);\n  for (let i = 0; i < normPoints.length; i++) {\n    counts[assignments[i]]++;\n    for (let d = 0; d < features.length; d++) sums[assignments[i]][d] += normPoints[i][d];\n  }\n  for (let c = 0; c < k; c++) {\n    if (counts[c] > 0) {\n      for (let d = 0; d < features.length; d++) centroids[c][d] = sums[c][d] / counts[c];\n    }\n  }\n}\n \nlet pointIdx = 0;\nconst enriched = rows.map(row => {\n  const newRow = { ...row };\n  const isValid = features.every(f => typeof row[f] === 'number' && !isNaN(row[f]));\n  if (isValid) {\n    newRow.cluster = assignments[pointIdx++];\n    newRow._cluster_feature_1 = features[0];\n    newRow._cluster_feature_2 = features[1];\n  } else {\n    newRow.cluster = null;\n  }\n  return { json: newRow };\n});\n \nconsole.log(`CLUSTERING: ${k} clusters created using ${features[0]} and ${features[1]}`);\nreturn enriched;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -2320,
+        -240
+      ],
+      "id": "2dc45be2-1b67-4778-a2a0-2f048aa87947",
+      "name": "Clustering1"
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\nconst rows = items.map(item => item.json);\nif (!rows.length) return [];\n\n// Auto-detect numeric columns\nconst numericCols = (rows[0]._numeric_cols || '').split(',').filter(c => c.trim());\n\n// Calculate column statistics\nconst colStats = {};\nfor (const col of numericCols) {\n  const vals = rows.map(r => r[col]).filter(v => typeof v === 'number' && !isNaN(v));\n  if (vals.length < 3) continue;\n  const mean = vals.reduce((a,b) => a+b,0)/vals.length;\n  const variance = vals.reduce((a,b) => a+Math.pow(b-mean,2),0)/vals.length;\n  const stddev = Math.sqrt(variance);\n  colStats[col] = { mean, stddev, min: Math.min(...vals), max: Math.max(...vals) };\n}\n\nconst alerts = [];\nfor (let i = 0; i < rows.length; i++) {\n  const row = rows[i];\n  // Generate a row identifier (use any ID column available)\n  const rowId = row.employee_id || row.transaction_id || row.student_id || row.id || i;\n\n  for (const col of numericCols) {\n    if (!colStats[col] || colStats[col].stddev === 0) continue;\n    const val = row[col];\n    if (typeof val !== 'number' || isNaN(val)) continue;\n\n    const { mean, stddev } = colStats[col];\n    const z = Math.abs((val - mean) / stddev);\n\n    let severity = 'Low';\n    if (z > 4) severity = 'Critical';\n    else if (z > 3) severity = 'High';\n    else if (z > 2) severity = 'Medium';\n    else continue; // only flag >2σ\n\n    alerts.push({\n      timestamp: new Date().toISOString(),\n      row_id: rowId,\n      column: col,\n      value: val,\n      mean: Math.round(mean * 100) / 100,\n      z_score: Math.round(z * 100) / 100,\n      severity: severity,\n      message: `[${severity}] Anomaly in '${col}': value ${val} (${z.toFixed(1)}σ from mean)`\n    });\n  }\n}\n\n// Sort alerts by severity (Critical first)\nconst severityOrder = { Critical: 0, High: 1, Medium: 2, Low: 3 };\nalerts.sort((a, b) => (severityOrder[a.severity] || 99) - (severityOrder[b.severity] || 99));\n\nif (alerts.length > 0) {\n  console.log(`SMART ALERTS: ${alerts.length} anomalies detected.`);\n  // You could now send this to Slack/Email via a webhook.\n  // For now, output as items.\n  return alerts.map(a => ({ json: a }));\n} else {\n  return [{ json: { status: 'ok', message: 'No significant anomalies detected.' } }];\n}"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1216,
+        256
+      ],
+      "id": "c59f6c6f-0d22-40e2-a486-dd2f6ea93958",
+      "name": "Automated Anomaly Alerts1"
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\nconst rows = items.map(item => item.json);\nconst profile = {};\n\n// All column names\nconst cols = Object.keys(rows[0] || {});\nfor (const col of cols) {\n  const values = rows.map(r => r[col]);\n  const numericValues = values.filter(v => typeof v === 'number' && !isNaN(v));\n  const stringValues = values.filter(v => typeof v === 'string');\n  \n  profile[col] = {\n    count: values.length,\n    missing: values.filter(v => v === null || v === undefined || (typeof v === 'string' && v.trim() === '')).length,\n    unique: new Set(values.map(v => String(v))).size,\n  };\n  \n  if (numericValues.length > 0) {\n    const sorted = [...numericValues].sort((a,b)=>a-b);\n    profile[col].min = sorted[0];\n    profile[col].max = sorted[sorted.length-1];\n    profile[col].mean = numericValues.reduce((a,b)=>a+b,0) / numericValues.length;\n  }\n  \n  if (stringValues.length > 0) {\n    const lengths = stringValues.map(s => s.length);\n    profile[col].minLength = Math.min(...lengths);\n    profile[col].maxLength = Math.max(...lengths);\n  }\n}\n\nconsole.log('DATA PROFILE:', JSON.stringify(profile, null, 2));\n\n// Pass the original data through unchanged\nreturn items;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -5088,
+        -240
+      ],
+      "id": "d6d461d3-ff1d-4ec8-941b-1cfeafce8c6f",
+      "name": "Data Profiler1"
+    },
+    {
+      "parameters": {
+        "jsCode": "const MAX_ROWS = 100000;\nconst items = $input.all();\nif (items.length > MAX_ROWS) {\n  throw new Error(`Too many rows: ${items.length}. Max allowed is ${MAX_ROWS}.`);\n}\nreturn items;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -4928,
+        -240
+      ],
+      "id": "2b37db8e-f493-46f2-a1e4-f55c9b69f159",
+      "name": "Safety Row Limit1"
+    },
+    {
+      "parameters": {
+        "jsCode": "// ---------------------------------------------------------------\n// UNIVERSAL Data Validation Rules – auto‑adapts to any dataset\n// ---------------------------------------------------------------\n\nconst items = $input.all();\nif (!items || !items.length) return [];\n\nconst rows = items.map(item => item.json);\nconst firstRow = rows[0];\n\n// Read the detected column types from the metadata\nconst numericCols = (firstRow._numeric_cols || '').split(',').filter(c => c.trim());\nconst dateCols   = (firstRow._date_cols   || '').split(',').filter(c => c.trim());\nconst textCols   = (firstRow._text_cols   || '').split(',').filter(c => c.trim());\n\nconsole.log('VALIDATION: Numeric:', numericCols);\nconsole.log('VALIDATION: Date:', dateCols);\nconsole.log('VALIDATION: Text:', textCols);\n\n// ---------- Universal rule generators ----------\n\n// 1. Email columns: if the column name contains 'email', apply email regex\nfunction isEmailLike(colName) {\n  return colName.toLowerCase().includes('email') || colName.toLowerCase().includes('e_mail');\n}\n\n// 2. Phone columns: if column name contains 'phone' or 'mobile'\nfunction isPhoneLike(colName) {\n  const lower = colName.toLowerCase();\n  return lower.includes('phone') || lower.includes('mobile') || lower.includes('contact');\n}\n\n// 3. For numeric columns: flag extreme outliers (>5 standard deviations from mean)\nfunction computeNumericStats(values) {\n  if (values.length < 3) return null;\n  const mean = values.reduce((a, b) => a + b, 0) / values.length;\n  const variance = values.reduce((a, b) => a + Math.pow(b - mean, 2), 0) / values.length;\n  const stddev = Math.sqrt(variance);\n  return { mean, stddev };\n}\n\n// 4. For date columns: flag dates outside the range 1900-01-01 to 2100-12-31\nfunction isValidBusinessDate(val) {\n  if (!val) return true; // missing values are handled separately by the Missing Data Handler\n  const d = new Date(val);\n  if (isNaN(d.getTime())) return false;\n  const year = d.getFullYear();\n  return year >= 1900 && year <= 2100;\n}\n\n// ---------- Build dynamic rules ----------\nconst dynamicRules = [];\n\n// Numeric rules (extreme outlier detection)\nconst numericStats = {};\nfor (const col of numericCols) {\n  const vals = rows.map(r => r[col]).filter(v => typeof v === 'number' && !isNaN(v));\n  const stats = computeNumericStats(vals);\n  if (stats && stats.stddev > 0) {\n    numericStats[col] = stats;\n    // We'll check each row's z‑score later\n  }\n}\n\n// Date rules\nfor (const col of dateCols) {\n  dynamicRules.push({\n    field: col,\n    type: 'date',\n    validate: (val) => isValidBusinessDate(val),\n    message: `Date outside reasonable range (1900‑2100)`,\n  });\n}\n\n// Text rules\nfor (const col of textCols) {\n  if (isEmailLike(col)) {\n    dynamicRules.push({\n      field: col,\n      type: 'email',\n      validate: (val) => {\n        if (typeof val !== 'string') return true;\n        return /^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(val.trim());\n      },\n      message: `Invalid email format`,\n    });\n  } else if (isPhoneLike(col)) {\n    dynamicRules.push({\n      field: col,\n      type: 'phone',\n      validate: (val) => {\n        if (typeof val !== 'string') return true;\n        // Simple check: at least 7 digits after removing non‑digit characters\n        const digits = val.replace(/\\D/g, '');\n        return digits.length >= 7;\n      },\n      message: `Invalid phone number (fewer than 7 digits)`,\n    });\n  }\n  // For other text columns we could flag very long strings, but that's optional\n}\n\n// ---------- Apply validation row by row ----------\nconst validationErrors = [];\n\nfor (let i = 0; i < rows.length; i++) {\n  const row = rows[i];\n\n  // Check dynamic text/date rules\n  for (const rule of dynamicRules) {\n    const val = row[rule.field];\n    if (val === null || val === undefined || val === '') continue; // missing data handled elsewhere\n    if (!rule.validate(val)) {\n      validationErrors.push({ row: i, field: rule.field, value: val, message: rule.message });\n    }\n  }\n\n  // Check numeric outlier rules\n  for (const col of numericCols) {\n    const stats = numericStats[col];\n    if (!stats) continue;\n    const val = row[col];\n    if (typeof val !== 'number' || isNaN(val)) continue;\n    const z = Math.abs((val - stats.mean) / stats.stddev);\n    if (z > 5) {\n      validationErrors.push({\n        row: i,\n        field: col,\n        value: val,\n        message: `Extreme numeric outlier (z‑score = ${z.toFixed(1)})`,\n      });\n    }\n  }\n}\n\nconsole.log(`VALIDATION ERRORS: ${validationErrors.length} issues found.`);\n\n// Add the flag column to every row\nconst enriched = rows.map((row, idx) => {\n  const newRow = { ...row };\n  newRow._has_validation_error = validationErrors.some(e => e.row === idx) ? 1 : 0;\n  return { json: newRow };\n});\n\nreturn enriched;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -4368,
+        -240
+      ],
+      "id": "0bf61ed7-6955-4a1d-811e-4059bab760f7",
+      "name": "Data Validation Rules1"
+    },
+    {
+      "parameters": {
+        "jsCode": "// ---------------------------------------------------------------\n// UNIVERSAL Z-Score Outlier Detection — auto-detects columns\n// ---------------------------------------------------------------\n \nconst threshold = 2.5;\nconst items = $input.all();\nconst rows = items.map(item => item.json);\n \nif (!rows.length) return items;\n \n// Auto-detect numeric columns\nconst numericCols = (rows[0]._numeric_cols || '')\n  .split(',')\n  .filter(c => c.trim());\n \n// Calculate mean and stddev per column\nconst stats = {};\nfor (const col of numericCols) {\n  const vals = rows\n    .map(r => r[col])\n    .filter(v => typeof v === 'number' && !isNaN(v));\n  if (vals.length < 2) continue;\n  const mean = vals.reduce((a, b) => a + b, 0) / vals.length;\n  const variance = vals.reduce((a, b) => a + (b - mean) ** 2, 0) / (vals.length - 1);\n  const stddev = Math.sqrt(variance);\n  if (stddev > 0) stats[col] = { mean, stddev };\n}\n \nconst enriched = rows.map(row => {\n  const newRow = { ...row };\n  for (const col of numericCols) {\n    if (stats[col] && typeof row[col] === 'number' && !isNaN(row[col])) {\n      const z = (row[col] - stats[col].mean) / stats[col].stddev;\n      newRow[`${col}_z_outlier`] = Math.abs(z) > threshold ? 1 : 0;\n    }\n  }\n  return { json: newRow };\n});\n \nconsole.log(`Z-SCORE OUTLIER: Checked ${numericCols.length} columns with threshold ${threshold}.`);\nreturn enriched;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -3120,
+        -240
+      ],
+      "id": "2dd63575-9b36-45e1-b9ca-06c7b7a136ce",
+      "name": "Z‑Score Based Outlier Detection1"
+    },
+    {
+      "parameters": {
+        "jsCode": "// ---------------------------------------------------------------\n// UNIVERSAL Decision Rules — auto risk scoring\n// ---------------------------------------------------------------\n \nconst items = $input.all();\nconst rows = items.map(i => i.json);\n \nif (!rows.length) return [];\n \n// Get numeric columns\nconst numericCols = (rows[0]._numeric_cols || '').split(',').filter(c => c.trim());\n \n// Calculate global stats for percentile-based risk scoring\nconst colStats = {};\nfor (const col of numericCols) {\n  const vals = rows.map(r => r[col]).filter(v => typeof v === 'number' && !isNaN(v));\n  if (vals.length === 0) continue;\n  const sorted = [...vals].sort((a, b) => a - b);\n  colStats[col] = {\n    p25: sorted[Math.floor(sorted.length * 0.25)],\n    p75: sorted[Math.floor(sorted.length * 0.75)],\n    mean: vals.reduce((a, b) => a + b, 0) / vals.length,\n  };\n}\n \nconst enriched = rows.map(row => {\n  const newRow = { ...row };\n  \n  // Risk scoring based on how many numeric fields are below 25th percentile\n  let lowCount = 0;\n  let totalChecked = 0;\n  \n  for (const col of numericCols) {\n    if (typeof row[col] !== 'number') continue;\n    totalChecked++;\n    if (colStats[col] && row[col] < colStats[col].p25) {\n      lowCount++;\n    }\n  }\n  \n  // Assign risk level based on percentage of low-performing fields\n  if (totalChecked > 0) {\n    const lowRatio = lowCount / totalChecked;\n    if (lowRatio >= 0.6) {\n      newRow.risk_level = 'High';\n    } else if (lowRatio >= 0.3) {\n      newRow.risk_level = 'Medium';\n    } else {\n      newRow.risk_level = 'Low';\n    }\n  } else {\n    newRow.risk_level = 'Unknown';\n  }\n  \n  // Flag rows where average is in the bottom 25% overall\n  if (typeof newRow._average === 'number' && colStats[numericCols[0]]) {\n    newRow.needs_attention = newRow.risk_level === 'High' ? 1 : 0;\n  }\n  \n  return { json: newRow };\n});\n \nconsole.log('DECISION RULES: Risk levels assigned:', \n  enriched.reduce((acc, r) => {\n    acc[r.json.risk_level] = (acc[r.json.risk_level] || 0) + 1;\n    return acc;\n  }, {})\n);\n \nreturn enriched"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -2496,
+        -240
+      ],
+      "id": "fe127e9a-21f8-4c2f-8131-9a8e32a3e5a0",
+      "name": "Decision Rules1"
+    },
+    {
+      "parameters": {
+        "jsCode": "// ---------------------------------------------------------------\n// UNIVERSAL HTML Report — works for ANY company data\n// Completely auto-detects columns and builds appropriate charts\n// ---------------------------------------------------------------\n \nconst items = $input.all();\nif (!items || !items.length) return [{ json: { data: '<html><body><h1>No data to report</h1></body></html>', mimeType: 'text/html', fileName: 'report.html' } }];\n \nconst rows = items.map(i => i.json);\nconst firstRow = rows[0];\n \n// Get auto-detected columns\nconst numericCols = (firstRow._numeric_cols || '').split(',').filter(c => c.trim());\nconst textCols = (firstRow._text_cols || '').split(',').filter(c => c.trim());\n \n// Filter out internal metadata columns for display\nconst internalCols = ['_numeric_cols', '_date_cols', '_text_cols', '_warnings',\n  '_cluster_feature_1', '_cluster_feature_2'];\nconst displayCols = Object.keys(firstRow).filter(k => !internalCols.includes(k));\n \nfunction quickChartUrl(config) {\n  return `https://quickchart.io/chart?c=${encodeURIComponent(JSON.stringify(config))}&w=500&h=300&f=png`;\n}\n \nlet chartsHtml = '';\n \n// ---- CHART 1: Distribution of first numeric column (Histogram) ----\nif (numericCols.length > 0) {\n  const col = numericCols[0];\n  const vals = rows.map(r => r[col]).filter(v => typeof v === 'number' && !isNaN(v));\n  if (vals.length > 0) {\n    const min = Math.min(...vals), max = Math.max(...vals);\n    const binCount = Math.min(8, Math.ceil(Math.sqrt(vals.length)));\n    const binWidth = (max - min) / binCount || 1;\n    const bins = Array(binCount).fill(0);\n    const labels = [];\n    for (let i = 0; i < binCount; i++) {\n      const lo = min + i * binWidth;\n      const hi = i === binCount - 1 ? max : lo + binWidth;\n      labels.push(`${lo.toFixed(1)}-${hi.toFixed(1)}`);\n      for (const v of vals) if (v >= lo && v <= hi) bins[i]++;\n    }\n    const config = { type: 'bar', data: { labels, datasets: [{ label: col, data: bins, backgroundColor: 'rgba(54,162,235,0.6)' }] }, options: { scales: { y: { beginAtZero: true, title: { display: true, text: 'Count' } }, x: { title: { display: true, text: col } } } } };\n    chartsHtml += `<div class=\"chart-box\"><h3>📊 Distribution of ${col}</h3><img src=\"${quickChartUrl(config)}\" alt=\"Distribution Chart\"/><p>Shows how ${col} values are spread across ${rows.length} records</p></div>`;\n  }\n}\n \n// ---- CHART 2: Risk Level breakdown (Doughnut) ----\nif (firstRow.risk_level !== undefined) {\n  const riskCounts = { High: 0, Medium: 0, Low: 0, Unknown: 0 };\n  rows.forEach(r => { if (riskCounts[r.risk_level] !== undefined) riskCounts[r.risk_level]++; });\n  const labels = Object.keys(riskCounts).filter(k => riskCounts[k] > 0);\n  const data = labels.map(k => riskCounts[k]);\n  const config = { type: 'doughnut', data: { labels, datasets: [{ data, backgroundColor: ['#f44336', '#ff9800', '#4caf50', '#9e9e9e'] }] } };\n  chartsHtml += `<div class=\"chart-box\"><h3>🚦 Risk Level Distribution</h3><img src=\"${quickChartUrl(config)}\" alt=\"Risk Chart\"/><p>Overall risk profile of the dataset</p></div>`;\n}\n \n// ---- CHART 3: Cluster scatter plot (if clustering ran) ----\nif (firstRow.cluster !== null && firstRow.cluster !== undefined && firstRow._cluster_feature_1) {\n  const f1 = firstRow._cluster_feature_1;\n  const f2 = firstRow._cluster_feature_2;\n  const clusterColors = ['rgba(255,99,132,0.6)', 'rgba(54,162,235,0.6)', 'rgba(75,192,192,0.6)', 'rgba(255,205,86,0.6)'];\n  const clusters = {};\n  rows.forEach(r => {\n    if (typeof r[f1] === 'number' && typeof r[f2] === 'number' && r.cluster != null) {\n      if (!clusters[r.cluster]) clusters[r.cluster] = [];\n      clusters[r.cluster].push({ x: r[f1], y: r[f2] });\n    }\n  });\n  const datasets = Object.entries(clusters).map(([c, pts], i) => ({\n    label: `Group ${Number(c) + 1}`,\n    data: pts,\n    backgroundColor: clusterColors[i % clusterColors.length],\n    pointRadius: 4\n  }));\n  const config = { type: 'scatter', data: { datasets }, options: { scales: { x: { title: { display: true, text: f1 } }, y: { title: { display: true, text: f2 } } } } };\n  chartsHtml += `<div class=\"chart-box\"><h3>🔵 Data Clusters: ${f1} vs ${f2}</h3><img src=\"${quickChartUrl(config)}\" alt=\"Cluster Chart\"/><p>Data grouped into ${Object.keys(clusters).length} natural clusters</p></div>`;\n}\n \n// ---- CHART 4: Category breakdown for first text column ----\nconst categoryCols = textCols.filter(c => !['email', 'full_name', 'first_name', 'last_name', 'id', 'name'].includes(c));\nif (categoryCols.length > 0) {\n  const col = categoryCols[0];\n  const freq = {};\n  rows.forEach(r => { if (r[col]) freq[r[col]] = (freq[r[col]] || 0) + 1; });\n  const sorted = Object.entries(freq).sort((a, b) => b[1] - a[1]).slice(0, 10);\n  if (sorted.length > 1) {\n    const config = { type: 'horizontalBar', data: { labels: sorted.map(([k]) => k), datasets: [{ label: 'Count', data: sorted.map(([, v]) => v), backgroundColor: 'rgba(153,102,255,0.6)' }] }, options: { scales: { x: { beginAtZero: true } } } };\n    chartsHtml += `<div class=\"chart-box\"><h3>📋 Breakdown by ${col}</h3><img src=\"${quickChartUrl(config)}\" alt=\"Category Chart\"/><p>Top ${sorted.length} values in ${col}</p></div>`;\n  }\n}\n \n// ---- CHART 5: Comparison of all numeric columns (Bar) ----\nif (numericCols.length >= 2) {\n  const means = numericCols.map(col => {\n    const vals = rows.map(r => r[col]).filter(v => typeof v === 'number');\n    return vals.length ? (vals.reduce((a, b) => a + b, 0) / vals.length) : 0;\n  });\n  const config = { type: 'bar', data: { labels: numericCols, datasets: [{ label: 'Average Value', data: means.map(v => Math.round(v * 100) / 100), backgroundColor: numericCols.map((_, i) => `hsl(${i * 60},70%,60%)`) }] }, options: { scales: { y: { beginAtZero: true } } } };\n  chartsHtml += `<div class=\"chart-box\"><h3>📈 Average Values by Column</h3><img src=\"${quickChartUrl(config)}\" alt=\"Comparison Chart\"/><p>Average of each numeric column across all records</p></div>`;\n}\n \n// ---- STATISTICS SUMMARY TABLE ----\nlet statsHtml = '<h2>📊 Statistical Summary</h2><table><tr><th>Column</th><th>Count</th><th>Min</th><th>Max</th><th>Average</th><th>Missing</th></tr>';\nfor (const col of numericCols) {\n  const vals = rows.map(r => r[col]).filter(v => typeof v === 'number' && !isNaN(v));\n  const missing = rows.filter(r => r[col] === null || r[col] === undefined || r[col] === '').length;\n  if (vals.length > 0) {\n    const avg = vals.reduce((a, b) => a + b, 0) / vals.length;\n    statsHtml += `<tr><td><b>${col}</b></td><td>${vals.length}</td><td>${Math.min(...vals).toFixed(2)}</td><td>${Math.max(...vals).toFixed(2)}</td><td>${avg.toFixed(2)}</td><td>${missing}</td></tr>`;\n  }\n}\nstatsHtml += '</table>';\n \n// ---- DATA TABLE (first 100 rows) ----\nconst tableRows = rows.slice(0, 100);\nlet tableHtml = `<h2>📋 Data (showing ${tableRows.length} of ${rows.length} rows)</h2>`;\ntableHtml += `<table><tr>${displayCols.map(c => `<th>${c}</th>`).join('')}</tr>`;\nfor (const row of tableRows) {\n  tableHtml += `<tr>${displayCols.map(c => {\n    const v = row[c];\n    if (v === null || v === undefined) return '<td style=\"color:#ccc\">—</td>';\n    if (typeof v === 'number') return `<td>${Math.round(v * 100) / 100}</td>`;\n    return `<td>${v}</td>`;\n  }).join('')}</tr>`;\n}\ntableHtml += `</table>`;\nif (rows.length > 100) tableHtml += `<p><i>Showing first 100 rows of ${rows.length} total</i></p>`;\n \n// ---- BUILD COMPLETE HTML ----\nconst timestamp = new Date().toLocaleString();\nconst html = `<!DOCTYPE html>\n<html>\n<head>\n<meta charset=\"UTF-8\">\n<title>Data Analysis Report</title>\n<style>\n  body { font-family: Arial, sans-serif; margin: 30px; background: #f5f5f5; color: #333; }\n  h1 { color: #1976D2; border-bottom: 3px solid #1976D2; padding-bottom: 10px; }\n  h2 { color: #333; margin-top: 40px; }\n  h3 { color: #555; }\n  .summary-bar { background: #1976D2; color: white; padding: 15px 20px; border-radius: 8px; margin: 20px 0; display: flex; gap: 40px; }\n  .summary-bar span { font-size: 18px; font-weight: bold; }\n  .summary-bar small { font-size: 12px; opacity: 0.8; display: block; }\n  .chart-box { background: white; border: 1px solid #ddd; border-radius: 8px; padding: 20px; margin: 20px 0; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }\n  .chart-box img { max-width: 100%; height: auto; display: block; margin: 0 auto; }\n  .chart-box p { color: #666; font-size: 13px; margin-top: 10px; }\n  table { border-collapse: collapse; width: 100%; background: white; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }\n  th { background: #1976D2; color: white; padding: 10px 8px; font-size: 13px; text-align: left; }\n  td { border-bottom: 1px solid #eee; padding: 8px; font-size: 12px; }\n  tr:hover td { background: #f0f8ff; }\n  .footer { margin-top: 40px; color: #999; font-size: 12px; text-align: center; }\n</style>\n</head>\n<body>\n<h1>📊 Automated Data Analysis Report</h1>\n \n<div class=\"summary-bar\">\n  <div><span>${rows.length}</span><small>Total Records</small></div>\n  <div><span>${displayCols.length}</span><small>Columns</small></div>\n  <div><span>${numericCols.length}</span><small>Numeric Fields</small></div>\n  <div><span>${new Date().toLocaleDateString()}</span><small>Generated</small></div>\n</div>\n \n${chartsHtml}\n${statsHtml}\n${tableHtml}\n \n<div class=\"footer\">\n  Report generated automatically at ${timestamp}\n</div>\n</body>\n</html>`;\n \nreturn [{ json: { data: html, mimeType: 'text/html', fileName: 'analysis_report.html' } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1184,
+        -464
+      ],
+      "id": "f95baa81-76c1-4f4f-8bf8-812c385670cb",
+      "name": "Enhanced HTML Report with Charts1"
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\nif (!items || items.length === 0) throw new Error('No data for AI preparation.');\n\nconst firstItem = items[0].json;\nconst insights = firstItem.business_insights || {};\n\nconst fallbackSummary = {\n  total_rows: items.length,\n  note: 'Business insights not available – check the Business Insights Aggregator node.'\n};\n\nconst summaryToSend = insights && insights.total_records ? insights : fallbackSummary;\n\nconst systemPrompt = `You are a senior business analyst presenting directly to the CEO.\nTranslate the data insights into an Executive Summary that is clear, honest, and immediately useful.\n\nCRITICAL RULES (follow them strictly – your job depends on it):\n\n1. NEVER use technical terms like \"row number\", \"index\", \"z-score\", or \"standard deviation\".\n2. Always describe the main metric in plain business language (e.g., \"total passengers\", \"total revenue\").\n3. When mentioning a person, driver, route, product, or department, always include the specific metric (e.g., \"Alan Turing averages 100 passengers but has the longest delays at 30 minutes\").\n4. If the data_quality section contains issues (negative values, extreme outliers, peak hour = 0), you MUST include them under \"Urgent Data Quality Alerts\". Interpret \"peak hour = 0\" as midnight and suggest a possible timezone/timestamp error.\n5. CROSS-CHECK: Before writing any recommendation, verify that it does NOT contradict anything you wrote in the Highlights.\n6. **ABSOLUTE PRIORITY RULE**: The first recommendation MUST address the biggest operational problem identified in the Highlights. That means the entity (driver, product, region, etc.) with the highest volume/impact AND the worst performance must be listed FIRST. Data quality fixes come after, unless a data issue is directly losing revenue or customers.\n7. **MENTORING RULE**: NEVER suggest a person or entity with poor performance (e.g., high delays, low productivity, high error rate) as a mentor. Only recommend top performers with proven excellence to mentor others.\n8. **DO NOT SKIP THE BIGGEST BOTTLENECK**: If the Highlights mention an entity with both high volume/impact and a severe performance problem, that entity MUST appear in the Recommendations as the first item. Never leave it out.\n9. **IDENTICAL STATS RULE**: If two different dimensions (e.g., a salesperson and a product) show exactly the same total or average, check whether that person only sold that product. If so, explicitly state that connection. If not, flag it as a possible data anomaly.\n10. **FINANCIAL ACCURACY FIRST**: If any data quality issue could affect financial reporting or revenue accuracy (e.g., negative revenue, negative quantities, extreme outliers in revenue), the FIRST recommendation must always be to fix that data issue. Financial trust must be restored before any growth strategies are proposed.\n\nStructure your response EXACTLY as follows:\n\n📊 Executive Summary: [Auto-detect a short topic from the data]\n\n1. Operational Highlights\n- (2-4 bullet points showing top performers, bottlenecks, capacity vs efficiency. Include specific numbers.)\n\n2. Urgent Data Quality Alerts\n- (Only if issues exist. List the anomalies and explain why they matter. If none, say \"No major data quality issues detected.\")\n\n3. Recommended Next Steps\n- (2-4 actions, ORDERED BY BUSINESS IMPACT. Always start with financial data fixes if they exist, then the biggest operational bottleneck, then other improvements. Be concrete and action‑oriented.)\n\nKeep the tone confident, friendly, and absolutely free of technical jargon. Do not use words like \"metric\", \"variable\", \"dataframe\", or \"column\".`;\n\nconst userPrompt = JSON.stringify(summaryToSend, null, 2);\n\nreturn [{\n  json: {\n    systemPrompt: systemPrompt,\n    userPrompt: userPrompt\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1200,
+        -16
+      ],
+      "id": "c575e7ef-08cc-4f6f-861a-eadd49aaa54f",
+      "name": "Code node to prepare data for the AI1"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.userPrompt }}",
+        "options": {
+          "systemMessage": "={{ $json.systemPrompt }}"
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        -944,
+        -16
+      ],
+      "id": "eafbbc68-d700-42f8-8883-e859e7e81891",
+      "name": "AI Agent2",
+      "alwaysOutputData": false,
+      "retryOnFail": true,
+      "maxTries": 5,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "model": "xiaomi/mimo-v2-flash",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenRouter",
+      "typeVersion": 1,
+      "position": [
+        -6112,
+        -1664
+      ],
+      "id": "0f5cf616-b535-49e7-a8c1-4b678b0edcb4",
+      "name": "OpenRouter Chat Model2",
+      "credentials": {
+        "openRouterApi": {
+          "id": "I2Dnc8m9MGVJLYYe",
+          "name": "OpenRouter account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "options": {
+          "fileName": "CSV File"
+        }
+      },
+      "type": "n8n-nodes-base.convertToFile",
+      "typeVersion": 1.1,
+      "position": [
+        -928,
+        -672
+      ],
+      "id": "e2e51b57-5b8c-4bc2-b51f-0a1dfc5a1d5b",
+      "name": "Convert to File"
+    },
+    {
+      "parameters": {
+        "mode": "markdownToHtml",
+        "markdown": "={{ $json.data }}",
+        "destinationKey": "html",
+        "options": {
+          "completeHTMLDocument": false,
+          "simpleLineBreaks": true,
+          "tables": true
+        }
+      },
+      "id": "459b7523-5e49-4f44-92ef-b91497f9eb88",
+      "name": "Convert markdown to HTML",
+      "type": "n8n-nodes-base.markdown",
+      "position": [
+        -928,
+        -464
+      ],
+      "typeVersion": 1
+    },
+    {
+      "parameters": {
+        "sendTo": "naveedshahid275@gmail.com",
+        "subject": "n8n-email",
+        "message": "={{ $json.html }}",
+        "options": {
+          "appendAttribution": false,
+          "senderName": "Abdullah Naveed - Data Analyst"
+        }
+      },
+      "id": "256f81e6-0513-4d59-96c3-7ad372171ea1",
+      "name": "Send DataAnalysis message",
+      "type": "n8n-nodes-base.gmail",
+      "position": [
+        -592,
+        -464
+      ],
+      "webhookId": "6634ed2d-552c-4bf6-a7f2-bbdee8d61df4",
+      "typeVersion": 2.1,
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "IUHQOJhXtuJ52Tmn",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "markdownToHtml",
+        "markdown": "={{ $json.email }}",
+        "destinationKey": "html",
+        "options": {
+          "completeHTMLDocument": false,
+          "simpleLineBreaks": true,
+          "tables": true
+        }
+      },
+      "id": "2e9ac37a-b722-4516-9e66-e83c29cba8ae",
+      "name": "Convert markdown to HTML3",
+      "type": "n8n-nodes-base.markdown",
+      "position": [
+        -144,
+        -16
+      ],
+      "typeVersion": 1
+    },
+    {
+      "parameters": {
+        "sendTo": "naveedshahid275@gmail.com",
+        "subject": "n8n-email",
+        "message": "={{ $json.html }}",
+        "options": {
+          "appendAttribution": false,
+          "senderName": "Abdullah Naveed - Data Analyst"
+        }
+      },
+      "id": "a8803891-9460-4e46-8bc2-ab206dc972ea",
+      "name": "Send DataAnalysis message3",
+      "type": "n8n-nodes-base.gmail",
+      "position": [
+        64,
+        -16
+      ],
+      "webhookId": "6634ed2d-552c-4bf6-a7f2-bbdee8d61df4",
+      "typeVersion": 2.1,
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "IUHQOJhXtuJ52Tmn",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// ====================================================================\n// PROFESSIONAL EMAIL FORMATTER - FOR AI AGENT RESPONSES\n// Place this Code node BEFORE Gmail Reply node\n// ====================================================================\n\n// Get the AI agent's response from the input\nconst item = $input.first().json;\n\n// Try multiple possible field names where AI response might be\nconst dirtyText = item.agentResponse \n  || item.text \n  || item.response \n  || item.output \n  || item.message \n  || item.body\n  || item.content\n  || '';\n\n// If no text found, return error\nif (!dirtyText || dirtyText.trim() === '') {\n  console.warn('⚠️ No AI response text found in input');\n  return [{\n    json: {\n      ...item,\n      cleanEmailBody: 'Error: No AI response to format',\n      formattingError: true\n    }\n  }];\n}\n\nconsole.log('📝 Original text length:', dirtyText.length);\n\n// ====================================================================\n// STEP 1: REMOVE MARKDOWN FORMATTING\n// ====================================================================\n\nlet cleanText = dirtyText\n  // Remove bold markers: **text** or __text__\n  .replace(/\\*\\*(.+?)\\*\\*/g, '$1')\n  .replace(/__(.+?)__/g, '$1')\n  \n  // Remove italic markers: *text* or _text_\n  .replace(/(?<!\\*)\\*(?!\\*)(.+?)(?<!\\*)\\*(?!\\*)/g, '$1')\n  .replace(/(?<!_)_(?!_)(.+?)(?<!_)_(?!_)/g, '$1')\n  \n  // Remove strikethrough: ~~text~~\n  .replace(/~~(.+?)~~/g, '$1')\n  \n  // Remove inline code: `text`\n  .replace(/`(.+?)`/g, '$1')\n  \n  // Remove code blocks: ```text```\n  .replace(/```[\\s\\S]*?```/g, '')\n  \n  // Remove markdown links: [text](url) -> text\n  .replace(/\\[([^\\]]+)\\]\\([^)]+\\)/g, '$1')\n  \n  // Remove image syntax: ![alt](url)\n  .replace(/!\\[[^\\]]*\\]\\([^)]+\\)/g, '')\n  \n  // Remove markdown headers: ### Header -> Header\n  .replace(/^#{1,6}\\s+(.+)$/gm, '$1')\n  \n  // Remove horizontal rules: --- or ***\n  .replace(/^[-*]{3,}$/gm, '')\n  \n  // Remove blockquotes: > text\n  .replace(/^>\\s+/gm, '')\n  \n  // Remove list markers but keep text\n  .replace(/^[\\*\\-\\+]\\s+/gm, '• ')\n  .replace(/^\\d+\\.\\s+/gm, '')\n  \n  // Remove HTML tags if any leaked through\n  .replace(/<[^>]+>/g, '');\n\n// ====================================================================\n// STEP 2: NORMALIZE LINE BREAKS AND SPACING\n// ====================================================================\n\ncleanText = cleanText\n  // Normalize line breaks (Windows/Unix)\n  .replace(/\\r\\n/g, '\\n')\n  .replace(/\\r/g, '\\n')\n  \n  // Remove excessive blank lines (more than 2 in a row)\n  .replace(/\\n{3,}/g, '\\n\\n')\n  \n  // Trim whitespace from each line\n  .split('\\n')\n  .map(line => line.trim())\n  .join('\\n')\n  \n  // Remove trailing/leading whitespace\n  .trim();\n\n// ====================================================================\n// STEP 3: INTELLIGENT PARAGRAPH FORMATTING\n// ====================================================================\n\nconst lines = cleanText.split('\\n');\nconst formattedLines = [];\nlet currentParagraph = [];\n\nfor (let i = 0; i < lines.length; i++) {\n  const line = lines[i];\n  \n  // Skip empty lines\n  if (line === '') {\n    // If we have accumulated paragraph text, save it\n    if (currentParagraph.length > 0) {\n      formattedLines.push(currentParagraph.join(' '));\n      currentParagraph = [];\n    }\n    // Add blank line for spacing\n    formattedLines.push('');\n    continue;\n  }\n  \n  // Detect section headers (lines with colons, all caps, or special markers)\n  const isHeader = (\n    line.endsWith(':') ||\n    line === line.toUpperCase() && line.length < 50 ||\n    line.startsWith('━') ||\n    line.startsWith('•') ||\n    /^[A-Z\\s]{10,}$/.test(line)\n  );\n  \n  if (isHeader) {\n    // Save current paragraph before header\n    if (currentParagraph.length > 0) {\n      formattedLines.push(currentParagraph.join(' '));\n      currentParagraph = [];\n    }\n    // Add header as standalone line\n    formattedLines.push(line);\n    formattedLines.push(''); // Blank line after header\n    continue;\n  }\n  \n  // Detect list items (bullets, checkmarks)\n  const isListItem = (\n    line.startsWith('•') ||\n    line.startsWith('✓') ||\n    line.startsWith('✅') ||\n    line.startsWith('❌') ||\n    line.startsWith('→') ||\n    line.startsWith('-') ||\n    /^\\d+[\\.\\)]\\s/.test(line)\n  );\n  \n  if (isListItem) {\n    // Save current paragraph before list\n    if (currentParagraph.length > 0) {\n      formattedLines.push(currentParagraph.join(' '));\n      currentParagraph = [];\n    }\n    // Add list item as standalone\n    formattedLines.push(line);\n    continue;\n  }\n  \n  // SHORT LINE (under 60 chars) - likely intentional formatting\n  if (line.length < 60) {\n    // Save current paragraph\n    if (currentParagraph.length > 0) {\n      formattedLines.push(currentParagraph.join(' '));\n      currentParagraph = [];\n    }\n    // Add short line standalone\n    formattedLines.push(line);\n    continue;\n  }\n  \n  // LONG LINE (60+ chars) - accumulate into paragraph\n  currentParagraph.push(line);\n  \n  // If sentence ends (period, question mark, exclamation), consider breaking\n  if (/[.!?]$/.test(line) && currentParagraph.join(' ').length > 200) {\n    formattedLines.push(currentParagraph.join(' '));\n    currentParagraph = [];\n  }\n}\n\n// Add any remaining paragraph\nif (currentParagraph.length > 0) {\n  formattedLines.push(currentParagraph.join(' '));\n}\n\n// Join with single line breaks\nlet finalText = formattedLines.join('\\n');\n\n// ====================================================================\n// STEP 4: CLEAN UP SPECIAL CHARACTERS & SPACING\n// ====================================================================\n\nfinalText = finalText\n  // Fix spacing around punctuation\n  .replace(/\\s+([.,!?;:])/g, '$1')\n  .replace(/([.,!?;:])\\s*([.,!?;:])/g, '$1 $2')\n  \n  // Fix multiple spaces\n  .replace(/[ \\t]+/g, ' ')\n  \n  // Clean up email/phone formatting\n  .replace(/(\\w)@(\\w)/g, '$1 @ $2') // Add space around @\n  .replace(/\\s@\\s/g, '@') // Then remove it (handles existing spaces)\n  \n  // Fix common AI artifacts\n  .replace(/\\[object Object\\]/gi, '')\n  .replace(/undefined/gi, '')\n  .replace(/null/gi, '')\n  \n  // Fix excessive punctuation\n  .replace(/\\.{4,}/g, '...')\n  .replace(/!{2,}/g, '!')\n  .replace(/\\?{2,}/g, '?')\n  \n  // Ensure proper spacing after sentences\n  .replace(/([.!?])([A-Z])/g, '$1 $2')\n  \n  // Remove any remaining control characters\n  .replace(/[\\x00-\\x1F\\x7F]/g, '')\n  \n  // Final trim\n  .trim();\n\n// ====================================================================\n// STEP 5: ENSURE PROPER EMAIL STRUCTURE\n// ====================================================================\n\n// Split into sections\nconst sections = finalText.split('\\n\\n');\nconst formattedSections = [];\n\nfor (const section of sections) {\n  if (!section.trim()) continue;\n  \n  const lines = section.split('\\n').filter(l => l.trim());\n  \n  // If section is all short lines (like contact info), keep as-is\n  const avgLineLength = lines.reduce((sum, l) => sum + l.length, 0) / lines.length;\n  \n  if (avgLineLength < 50 || lines.length === 1) {\n    // Keep short sections as-is with line breaks\n    formattedSections.push(lines.join('\\n'));\n  } else {\n    // Long section - combine into paragraph\n    formattedSections.push(lines.join(' '));\n  }\n}\n\nfinalText = formattedSections.join('\\n\\n');\n\n// ====================================================================\n// STEP 6: QUALITY CHECKS\n// ====================================================================\n\n// Ensure not too many consecutive blank lines\nfinalText = finalText.replace(/\\n{4,}/g, '\\n\\n\\n');\n\n// Ensure no weird spacing at start/end\nfinalText = finalText.trim();\n\n// If text is suspiciously short, flag it\nconst tooShort = finalText.length < 50;\nconst tooLong = finalText.length > 5000;\n\nconsole.log('✅ Formatted text length:', finalText.length);\nconsole.log('📊 Formatting stats:', {\n  originalLength: dirtyText.length,\n  finalLength: finalText.length,\n  reduction: ((1 - finalText.length/dirtyText.length) * 100).toFixed(1) + '%',\n  lines: finalText.split('\\n').length\n});\n\n// ====================================================================\n// RETURN FORMATTED EMAIL\n// ====================================================================\n\nreturn [{\n  json: {\n    ...item, // Keep all original data\n    cleanEmailBody: finalText, // Formatted text for email\n    originalText: dirtyText, // Keep original for reference\n    formattingApplied: true,\n    warningTooShort: tooShort,\n    warningTooLong: tooLong,\n    characterCount: finalText.length,\n    lineCount: finalText.split('\\n').length\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -368,
+        -16
+      ],
+      "id": "4312972e-5284-47b3-8a05-976d7e790406",
+      "name": "Code in JavaScript6",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "// ---------------------------------------------------------------\n// Management‑Friendly Export – Removes technical columns\n// Keeps only the columns a manager needs to see.\n// ---------------------------------------------------------------\n\nconst items = $input.all();\nif (!items || items.length === 0) {\n  console.log('EXPORT: No input data – returning empty array.');\n  return [];\n}\n\n// ========== CONFIGURATION ==========\n// Any column whose name CONTAINS any of these strings will be REMOVED.\nconst removePatterns = [\n  '_zscore',   // all z‑score columns\n  '_outlier',  // all outlier flags\n  '_ge',       // percentile flags (ge10prc, ge25prc, etc.)\n  '_z_outlier', // duplicate outlier flags (if any)\n  '_missing',  // missing data flag columns\n  '_warnings', // internal warning field\n  '_has_validation_error', // validation flag\n];\n\n// Columns we definitely want to KEEP (if they exist)\nconst essentialColumns = [\n  'id',\n  'first_name',\n  'last_name',\n  'full_name',\n  'email',\n  'city',\n  'class_id',\n  'exam_date',\n  'math',\n  'english',\n  'science',\n  'total_score',\n  'average_score',\n  'grade',\n  'risk_level',\n  'needs_math_science_help',\n  'cluster',\n  'class_avg_math',\n  'class_avg_total',\n  'class_max_total',\n  'class_min_total',\n  'student_count',\n];\n\n// ========== PROCESS ==========\nconst cleanedRows = items.map(item => {\n  const row = { ...item.json };\n  const keys = Object.keys(row);\n\n  for (const key of keys) {\n    // Remove if it matches any pattern\n    const shouldRemove = removePatterns.some(pattern => key.includes(pattern));\n    if (shouldRemove) {\n      delete row[key];\n    }\n  }\n\n  // Verify that essential columns are present (log warning if missing)\n  for (const col of essentialColumns) {\n    if (row[col] === undefined) {\n      // It's okay if some columns don't exist for this dataset, just note it\n      console.log(`EXPORT: Essential column '${col}' is missing from a row (this may be normal).`);\n    }\n  }\n\n  return { json: row };\n});\n\nconsole.log(`EXPORT: Simplified ${cleanedRows.length} rows for management.`);\n\nreturn cleanedRows;;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1680,
+        -240
+      ],
+      "id": "e3b2c2de-97ee-44a7-9f97-96858b1f3672",
+      "name": "Management‑Friendly Export1"
+    },
+    {
+      "parameters": {
+        "jsCode": "// ---------------------------------------------------------------\n// Build HTML File — correctly converts HTML string to binary\n// Place this INSTEAD of Convert to File node\n// ---------------------------------------------------------------\n \nconst item = $input.first().json;\n \n// Get the HTML content\nconst htmlContent = item.data || item.html || '';\n \nif (!htmlContent) {\n  return [{ json: { error: 'No HTML content found' } }];\n}\n \n// Convert HTML string to binary buffer\nconst buffer = Buffer.from(htmlContent, 'utf-8');\n \nreturn [{\n  json: { fileName: 'analysis_report.html' },\n  binary: {\n    data: {\n      data: buffer.toString('base64'),\n      mimeType: 'text/html',\n      fileName: 'analysis_report.html',\n      fileExtension: 'html',\n    }\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -912,
+        -240
+      ],
+      "id": "51844f07-85cb-4a5b-a45e-9af80d6eb14e",
+      "name": "Build HTML File1"
+    },
+    {
+      "parameters": {
+        "sendTo": "naveedshahid275@gmail.com",
+        "subject": "Data analysis HTML file",
+        "emailType": "text",
+        "message": "This is the complete HTML file , Download it and open in the browser",
+        "options": {
+          "appendAttribution": false,
+          "attachmentsUi": {
+            "attachmentsBinary": [
+              {},
+              {}
+            ]
+          },
+          "senderName": "Abdullah Naveed - Data Analyst"
+        }
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        -592,
+        -240
+      ],
+      "id": "100f10cc-f664-4724-85ab-ddc5319cddfb",
+      "name": "Send a message3",
+      "webhookId": "c6c0b0c3-672e-43b4-a30f-c8ae9613f243",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "IUHQOJhXtuJ52Tmn",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\nif (!items || !items.length) return [];\n\nconst rows = items.map(item => item.json);\nconst firstRow = rows[0];\n\n// Get all column names (excluding metadata)\nconst allCols = Object.keys(firstRow).filter(k => !k.startsWith('_'));\n\n// Count outlier columns\nconst outlierCols = allCols.filter(col => col.endsWith('_outlier'));\nconst validationCol = '_has_validation_error';\n\n// Calculate DQI per row\nconst enriched = rows.map(row => {\n  const newRow = { ...row };\n\n  // 1. Completeness: fraction of non‑missing values\n  const totalFields = allCols.length;\n  const nonMissing = allCols.filter(col => {\n    const val = row[col];\n    return val !== null && val !== undefined && val !== '';\n  }).length;\n  const completeness = totalFields > 0 ? (nonMissing / totalFields) * 100 : 100;\n\n  // 2. Outlier penalty: subtract 20 points if any outlier flag is true\n  let outlierPenalty = 0;\n  for (const col of outlierCols) {\n    if (row[col] === 1 || row[col] === true) {\n      outlierPenalty = 20;\n      break;\n    }\n  }\n\n  // 3. Validation penalty: subtract 30 points if validation error exists\n  let validationPenalty = 0;\n  if (row[validationCol] === 1 || row[validationCol] === true) {\n    validationPenalty = 30;\n  }\n\n  const dqiScore = Math.max(0, completeness - outlierPenalty - validationPenalty);\n  newRow._dqi_score = Math.round(dqiScore * 100) / 100;  // round to 2 decimals\n\n  return { json: newRow };\n});\n\nconsole.log('DQI: Added quality scores to', enriched.length, 'rows.');\nreturn enriched;;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -2112,
+        -240
+      ],
+      "id": "2b161885-852f-4cac-b169-f6802248dfb5",
+      "name": "Data Quality Index1"
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\nif (!items || !items.length) return [];\n\nconst rows = items.map(item => item.json);\nconst firstRow = rows[0];\n\n// Find date columns from metadata\nconst dateCols = (firstRow._date_cols || '').split(',').filter(c => c.trim());\nconst numericCols = (firstRow._numeric_cols || '').split(',').filter(c => c.trim())\n  .filter(c => !c.toLowerCase().includes('id'));  // skip ID columns\n\nif (dateCols.length === 0) {\n  console.log('FORECAST: No date column found – skipping.');\n  return items;\n}\n\n// Use the first date column\nconst dateCol = dateCols[0];\n\n// Sort rows by date (ascending)\nconst sortedRows = [...rows].sort((a, b) => {\n  const da = new Date(a[dateCol]);\n  const db = new Date(b[dateCol]);\n  return da - db;\n});\n\n// Simple exponential smoothing forecast\nfunction exponentialSmoothing(values, alpha = 0.5) {\n  if (values.length < 2) return null;\n  let forecast = values[0];\n  for (let i = 1; i < values.length; i++) {\n    forecast = alpha * values[i] + (1 - alpha) * forecast;\n  }\n  return forecast;\n}\n\n// Compute 3‑period moving average for each row\nfor (let i = 0; i < sortedRows.length; i++) {\n  for (const col of numericCols) {\n    const currentVal = sortedRows[i][col];\n    if (typeof currentVal !== 'number') continue;\n\n    // 3‑period SMA\n    if (i >= 2) {\n      const windowVals = sortedRows.slice(i-2, i+1).map(r => r[col]).filter(v => typeof v === 'number');\n      if (windowVals.length === 3) {\n        const sma = windowVals.reduce((s, v) => s + v, 0) / 3;\n        sortedRows[i][`${col}_sma3`] = Math.round(sma * 100) / 100;\n      }\n    }\n\n    // Trend direction over last 5 points\n    if (i >= 4) {\n      const trendVals = sortedRows.slice(i-4, i+1).map(r => r[col]).filter(v => typeof v === 'number');\n      if (trendVals.length >= 5) {\n        const firstHalf = trendVals.slice(0, 3);\n        const secondHalf = trendVals.slice(-3);\n        const firstAvg = firstHalf.reduce((a,b)=>a+b,0)/firstHalf.length;\n        const secondAvg = secondHalf.reduce((a,b)=>a+b,0)/secondHalf.length;\n        const pctChange = firstAvg ? ((secondAvg - firstAvg) / firstAvg * 100) : 0;\n        sortedRows[i][`${col}_trend`] = pctChange > 2 ? 'rising' : (pctChange < -2 ? 'falling' : 'flat');\n      }\n    }\n  }\n}\n\n// Add overall forecast for each numeric column (as a separate summary row? No, we'll log it)\nconst forecastSummary = {};\nfor (const col of numericCols) {\n  const vals = sortedRows.map(r => r[col]).filter(v => typeof v === 'number');\n  if (vals.length >= 3) {\n    const forecast = exponentialSmoothing(vals, 0.5);\n    if (forecast !== null) {\n      forecastSummary[col] = Math.round(forecast * 100) / 100;\n      // Attach forecast to the last row\n      const lastRow = sortedRows[sortedRows.length - 1];\n      lastRow[`${col}_nextforecast`] = forecastSummary[col];\n    }\n  }\n}\nconsole.log('FORECAST SUMMARY:', forecastSummary);\n\nreturn sortedRows.map(r => ({ json: r }));"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1904,
+        -240
+      ],
+      "id": "ecbde5ee-02ef-4cb2-bcdb-5e0243af2016",
+      "name": "Time‑Aware Forecasting1"
+    },
+    {
+      "parameters": {
+        "jsCode": "// ---------------------------------------------------------------\n// UNIVERSAL Deduplication – auto-detects ID columns\n// If an ID column exists, removes duplicates based on that column.\n// Otherwise, removes exact duplicate rows.\n// ---------------------------------------------------------------\n\nconst items = $input.all();\nif (!items || items.length === 0) return [];\n\nconst rows = items.map(item => item.json);\n\n// Find potential ID columns (name contains \"id\")\nconst allCols = Object.keys(rows[0] || {});\nconst idCols = allCols.filter(col => col.toLowerCase().includes('id'));\n\nlet dedupedRows;\nlet removedCount = 0;\n\nif (idCols.length > 0) {\n  // Deduplicate by the first ID column (you can extend to multiple)\n  const primaryKey = idCols[0];\n  console.log(`DEDUP: Using primary key column '${primaryKey}' for deduplication.`);\n  \n  const seen = new Map();\n  dedupedRows = [];\n  for (const row of rows) {\n    const key = row[primaryKey];\n    if (key !== null && key !== undefined && key !== '') {\n      if (seen.has(key)) {\n        removedCount++;\n      } else {\n        seen.set(key, true);\n        dedupedRows.push(row);\n      }\n    } else {\n      // Row without a valid key – keep it (or you could skip, but safer to keep)\n      dedupedRows.push(row);\n    }\n  }\n} else {\n  // No ID column: remove exact duplicate rows (like existing logic)\n  console.log('DEDUP: No ID column found, removing exact duplicates.');\n  const seen = new Set();\n  dedupedRows = [];\n  for (const row of rows) {\n    // Create a deterministic string from sorted keys (ignore metadata columns)\n    const cleanRow = {};\n    for (const key of Object.keys(row).filter(k => !k.startsWith('_'))) {\n      cleanRow[key] = row[key];\n    }\n    const key = JSON.stringify(cleanRow, Object.keys(cleanRow).sort());\n    if (seen.has(key)) {\n      removedCount++;\n    } else {\n      seen.add(key);\n      dedupedRows.push(row);\n    }\n  }\n}\n\nconsole.log(`DEDUP: Removed ${removedCount} duplicate rows. Output rows: ${dedupedRows.length}`);\n\nreturn dedupedRows.map(r => ({ json: r }));"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -4544,
+        -240
+      ],
+      "id": "123260b4-0108-4787-9c2f-11c76fb2dbaa",
+      "name": "Universal Dedup1"
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "1hPFf9L7nUIkT5MiCVq_OAOW0iSJwmI_oDOqnMP1VpEw",
+          "mode": "list",
+          "cachedResultName": "Customer",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1hPFf9L7nUIkT5MiCVq_OAOW0iSJwmI_oDOqnMP1VpEw/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Sheet1",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1hPFf9L7nUIkT5MiCVq_OAOW0iSJwmI_oDOqnMP1VpEw/edit#gid=0"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        -5280,
+        -240
+      ],
+      "id": "3f9495b1-0f2d-4474-a218-85ebb3448de3",
+      "name": "Get row(s) in sheet1",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "AwlbE8H5Zw2UiDE0",
+          "name": "Google Sheets OAuth2 API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        -5456,
+        -240
+      ],
+      "id": "84564d3a-6bd6-4888-9393-0ae1e5295054",
+      "name": "Schedule Trigger1"
+    },
+    {
+      "parameters": {
+        "sendTo": "naveedshahid275@gmail.com",
+        "subject": "Data analysis CSV file",
+        "emailType": "text",
+        "message": "This is the complete CSV file after the analysis of your data.",
+        "options": {
+          "appendAttribution": false,
+          "attachmentsUi": {
+            "attachmentsBinary": [
+              {}
+            ]
+          }
+        }
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        -576,
+        -688
+      ],
+      "id": "6ed5974b-698f-43c9-912f-8ab99e175db9",
+      "name": "Send a message4",
+      "webhookId": "e002abf1-764c-45a3-b028-2779fee8d184",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "IUHQOJhXtuJ52Tmn",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Remove any remaining markdown or accidental formatting\nlet email = $input.first().json.output;\nemail = email.replace(/\\*\\*/g, '');\nemail = email.replace(/\\[(.*?)\\]\\(.*?\\)/g, '$1');\n// Ensure no subject line exists\nif (email.toLowerCase().includes('subject:')) {\n  email = email.replace(/subject:.*?\\n/i, '');\n}\nreturn { email: email };"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -592,
+        -16
+      ],
+      "id": "45bba11f-0bf6-4a46-a90c-69d9211d4305",
+      "name": "Code in JavaScript9"
+    },
+    {
+      "parameters": {
+        "sendTo": "naveedshahid275@gmail.com",
+        "subject": "Automated Anomaly Alerts",
+        "emailType": "text",
+        "message": "={{ $json.message }}",
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        -592,
+        272
+      ],
+      "id": "f05dfec8-fbea-46c8-a221-a4f6008bf648",
+      "name": "Send a message5",
+      "webhookId": "c1d4028b-1e40-4e8c-9dcb-b1e652e8e863",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "IUHQOJhXtuJ52Tmn",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\n\nif (!items || items.length === 0) {\n  return [{\n    json: {\n      data: `<!DOCTYPE html>\n<html>\n<head>\n<meta charset=\"UTF-8\" />\n<title>Executive Dashboard</title>\n<style>\n  *{box-sizing:border-box}\n  body{\n    margin:0;\n    min-height:100vh;\n    display:flex;\n    align-items:center;\n    justify-content:center;\n    background:radial-gradient(circle at top,#111827,#020617 60%);\n    color:#e5e7eb;\n    font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;\n    padding:24px;\n  }\n  .card{\n    width:min(760px,100%);\n    background:rgba(17,24,39,.92);\n    border:1px solid rgba(148,163,184,.18);\n    border-radius:28px;\n    padding:42px;\n    text-align:center;\n    box-shadow:0 24px 80px rgba(0,0,0,.5);\n  }\n  h1{margin:0 0 12px;font-size:clamp(30px,4vw,48px)}\n  p{margin:0;color:#94a3b8;font-size:16px;line-height:1.7}\n</style>\n</head>\n<body>\n  <div class=\"card\">\n    <h1>📊 No Data Available</h1>\n    <p>Connect a valid data source to generate the dashboard.</p>\n  </div>\n</body>\n</html>`,\n      mimeType: 'text/html',\n      fileName: 'executive_dashboard.html'\n    }\n  }];\n}\n\ntry {\n  const rows = items.map(i => ({ ...i.json }));\n  const firstRow = rows[0] || {};\n\n  const escapeHtml = (v) => String(v ?? '')\n    .replace(/&/g, '&amp;')\n    .replace(/</g, '&lt;')\n    .replace(/>/g, '&gt;')\n    .replace(/\"/g, '&quot;')\n    .replace(/'/g, '&#39;');\n\n  const visibleCols = [];\n  for (const row of rows) {\n    for (const key of Object.keys(row)) {\n      if (!key.startsWith('_') && !visibleCols.includes(key)) visibleCols.push(key);\n    }\n  }\n\n  const metaNumericCols = (firstRow._numeric_cols || '').split(',').map(s => s.trim()).filter(Boolean);\n  const metaDateCols = (firstRow._date_cols || '').split(',').map(s => s.trim()).filter(Boolean);\n  const metaTextCols = (firstRow._text_cols || '').split(',').map(s => s.trim()).filter(Boolean);\n\n  const numericCols = metaNumericCols.length ? metaNumericCols.filter(c => visibleCols.includes(c)) : visibleCols.filter(c => {\n    const vals = rows.map(r => r[c]).filter(v => typeof v === 'number' && Number.isFinite(v));\n    return vals.length >= Math.max(3, Math.ceil(rows.length * 0.3));\n  });\n\n  const dateCols = metaDateCols.length ? metaDateCols.filter(c => visibleCols.includes(c)) : [];\n  const textCols = metaTextCols.length ? metaTextCols.filter(c => visibleCols.includes(c)) : visibleCols.filter(c => !numericCols.includes(c));\n\n  const pickCol = (list, patterns) => list.find(col => patterns.some(re => re.test(col))) || list[0] || '';\n\n  const amountCol = pickCol(numericCols, [/amount/i, /revenue/i, /sales/i, /total/i, /price/i, /value/i, /score/i]);\n  const categoryCol = pickCol(\n    textCols.filter(c => !/^(id|name|full_name|first_name|last_name|email)$/i.test(c)),\n    [/category/i, /type/i, /status/i, /segment/i, /dept/i, /department/i]\n  );\n  const dateCol = dateCols[0] || pickCol(visibleCols, [/date/i, /time/i, /month/i, /year/i]);\n\n  const clusterExists = visibleCols.includes('cluster');\n  const clusterValues = clusterExists\n    ? Array.from(new Set(rows.map(r => r.cluster).filter(v => v !== null && v !== undefined && v !== ''))).sort((a, b) => String(a).localeCompare(String(b), undefined, { numeric: true }))\n    : [];\n\n  const amountValues = amountCol\n    ? rows.map(r => Number(r[amountCol])).filter(v => Number.isFinite(v))\n    : [];\n\n  const totalValue = amountValues.reduce((a, b) => a + b, 0);\n  const avgValue = amountValues.length ? totalValue / amountValues.length : 0;\n  const anomalyCount = rows.filter(r => numericCols.some(c => r[`${c}_outlier`] === 1 || r[`${c}_z_outlier`] === 1)).length;\n  const highRiskCount = rows.filter(r => String(r.risk_level || 'Unknown') === 'High').length;\n  const mediumRiskCount = rows.filter(r => String(r.risk_level || 'Unknown') === 'Medium').length;\n  const lowRiskCount = rows.filter(r => String(r.risk_level || 'Unknown') === 'Low').length;\n\n  let missingCells = 0;\n  for (const c of visibleCols) {\n    for (const r of rows) {\n      if (r[c] === null || r[c] === undefined || r[c] === '') missingCells++;\n    }\n  }\n\n  const chartMinMax = (vals) => {\n    if (!vals.length) return null;\n    return { min: Math.min(...vals), max: Math.max(...vals) };\n  };\n\n  const buildHistogram = (vals, maxBins = 12) => {\n    if (!vals.length) return { labels: [], data: [] };\n    const mm = chartMinMax(vals);\n    const min = mm.min;\n    const max = mm.max;\n    const bins = Math.min(maxBins, Math.max(5, Math.ceil(Math.sqrt(vals.length))));\n    const width = (max - min) / bins || 1;\n    const labels = [];\n    const data = Array(bins).fill(0);\n\n    for (let i = 0; i < bins; i++) {\n      const lo = min + i * width;\n      const hi = i === bins - 1 ? max : lo + width;\n      labels.push(`${Math.round(lo)}–${Math.round(hi)}`);\n      for (const v of vals) {\n        const inBin = i === bins - 1 ? (v >= lo && v <= hi) : (v >= lo && v < hi);\n        if (inBin) data[i]++;\n      }\n    }\n    return { labels, data };\n  };\n\n  const buildFrequency = (col, topN = 12) => {\n    if (!col) return { labels: [], data: [] };\n    const freq = {};\n    rows.forEach(r => {\n      const v = r[col];\n      if (v !== null && v !== undefined && String(v).trim() !== '') {\n        const key = String(v);\n        freq[key] = (freq[key] || 0) + 1;\n      }\n    });\n    const sorted = Object.entries(freq).sort((a, b) => b[1] - a[1]).slice(0, topN);\n    return { labels: sorted.map(([k]) => k), data: sorted.map(([, v]) => v) };\n  };\n\n  const trendPoints = (() => {\n    if (amountCol && dateCol) {\n      return rows\n        .map(r => ({ x: r[dateCol], y: Number(r[amountCol]) }))\n        .filter(p => p.x !== null && p.x !== undefined && Number.isFinite(p.y))\n        .sort((a, b) => String(a.x).localeCompare(String(b.x)));\n    }\n    if (amountCol) {\n      return rows\n        .map((r, idx) => ({ x: idx + 1, y: Number(r[amountCol]) }))\n        .filter(p => Number.isFinite(p.y));\n    }\n    return [];\n  })().slice(-80);\n\n  const avgByCol = numericCols.slice(0, 12).map(col => {\n    const vals = rows.map(r => Number(r[col])).filter(v => Number.isFinite(v));\n    return {\n      col,\n      avg: vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : 0\n    };\n  });\n\n  const hist = buildHistogram(amountValues);\n  const cat = buildFrequency(categoryCol, 12);\n\n  const rowsJson = JSON.stringify(rows).replace(/</g, '\\\\u003c');\n  const colsJson = JSON.stringify(visibleCols).replace(/</g, '\\\\u003c');\n  const riskJson = JSON.stringify({\n    High: highRiskCount,\n    Medium: mediumRiskCount,\n    Low: lowRiskCount,\n    Unknown: rows.length - highRiskCount - mediumRiskCount - lowRiskCount\n  }).replace(/</g, '\\\\u003c');\n  const histJson = JSON.stringify(hist).replace(/</g, '\\\\u003c');\n  const catJson = JSON.stringify(cat).replace(/</g, '\\\\u003c');\n  const trendJson = JSON.stringify(trendPoints).replace(/</g, '\\\\u003c');\n  const avgJson = JSON.stringify(avgByCol).replace(/</g, '\\\\u003c');\n  const amountColJson = JSON.stringify(amountCol).replace(/</g, '\\\\u003c');\n  const categoryColJson = JSON.stringify(categoryCol).replace(/</g, '\\\\u003c');\n  const dateColJson = JSON.stringify(dateCol).replace(/</g, '\\\\u003c');\n  const numericColsJson = JSON.stringify(numericCols).replace(/</g, '\\\\u003c');\n  const clusterExistsJson = JSON.stringify(clusterExists).replace(/</g, '\\\\u003c');\n  const clusterValuesJson = JSON.stringify(clusterValues).replace(/</g, '\\\\u003c');\n\n  const defaultPageSize = rows.length <= 500 ? 'all' : 100;\n\n  const html = `<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n<meta charset=\"UTF-8\" />\n<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\" />\n<title>Executive Dashboard</title>\n<script src=\"https://cdn.jsdelivr.net/npm/chart.js\"></script>\n<style>\n  :root{\n    --bg:#020617;\n    --panel:rgba(15,23,42,.90);\n    --panel2:rgba(17,24,39,.94);\n    --line:rgba(148,163,184,.16);\n    --text:#e5e7eb;\n    --muted:#94a3b8;\n    --accent:#60a5fa;\n    --good:#34d399;\n    --warn:#fbbf24;\n    --bad:#fb7185;\n    --shadow:0 28px 90px rgba(0,0,0,.42);\n  }\n  *{box-sizing:border-box}\n  html,body{height:100%}\n  body{\n    margin:0;\n    background:\n      radial-gradient(circle at top left, rgba(96,165,250,.16), transparent 28%),\n      radial-gradient(circle at top right, rgba(52,211,153,.10), transparent 22%),\n      linear-gradient(180deg, #020617 0%, #050b1a 55%, #020617 100%);\n    color:var(--text);\n    font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;\n  }\n  .page{\n    width:min(1520px, calc(100% - 24px));\n    margin:12px auto 40px;\n  }\n  .shell{\n    background:var(--panel);\n    border:1px solid var(--line);\n    border-radius:30px;\n    overflow:hidden;\n    box-shadow:var(--shadow);\n    backdrop-filter:blur(18px);\n  }\n  .hero{\n    padding:28px;\n    border-bottom:1px solid var(--line);\n    background:linear-gradient(180deg, rgba(255,255,255,.05), transparent);\n  }\n  .hero-top{\n    display:flex;\n    justify-content:space-between;\n    align-items:flex-end;\n    gap:16px;\n    flex-wrap:wrap;\n  }\n  h1{\n    margin:0;\n    font-size:clamp(30px, 4vw, 48px);\n    letter-spacing:-.04em;\n  }\n  .sub{\n    margin-top:8px;\n    color:var(--muted);\n    font-size:14px;\n    line-height:1.65;\n  }\n  .pill-row{\n    display:flex;\n    gap:10px;\n    flex-wrap:wrap;\n  }\n  .pill{\n    padding:8px 12px;\n    border-radius:999px;\n    border:1px solid var(--line);\n    background:rgba(255,255,255,.04);\n    color:#cbd5e1;\n    font-size:12px;\n    white-space:nowrap;\n  }\n  .controls{\n    display:grid;\n    grid-template-columns:1.5fr .9fr .9fr .9fr;\n    gap:12px;\n    margin-top:18px;\n  }\n  .subcontrols{\n    display:grid;\n    grid-template-columns:1fr .8fr .9fr .9fr;\n    gap:12px;\n    margin-top:12px;\n  }\n  .input,.select{\n    width:100%;\n    background:var(--panel2);\n    color:var(--text);\n    border:1px solid var(--line);\n    border-radius:16px;\n    padding:14px 16px;\n    outline:none;\n  }\n  .input::placeholder{color:#64748b}\n  .kpis{\n    display:grid;\n    grid-template-columns:repeat(4,minmax(0,1fr));\n    gap:14px;\n    padding:18px 28px 0;\n  }\n  .kpi{\n    border:1px solid var(--line);\n    border-radius:22px;\n    background:rgba(255,255,255,.03);\n    padding:18px;\n    min-height:122px;\n  }\n  .label{\n    color:var(--muted);\n    font-size:12px;\n    text-transform:uppercase;\n    letter-spacing:.12em;\n  }\n  .value{\n    margin-top:10px;\n    font-size:clamp(24px, 3vw, 40px);\n    font-weight:800;\n    letter-spacing:-.04em;\n  }\n  .note{\n    margin-top:8px;\n    color:#cbd5e1;\n    font-size:13px;\n  }\n  .content{padding:18px}\n  .grid{\n    display:grid;\n    grid-template-columns:repeat(2,minmax(0,1fr));\n    gap:14px;\n    margin-bottom:14px;\n  }\n  .card{\n    background:rgba(255,255,255,.03);\n    border:1px solid var(--line);\n    border-radius:24px;\n    padding:18px;\n  }\n  .card h3{\n    margin:0 0 14px;\n    font-size:16px;\n    letter-spacing:-.02em;\n  }\n  .chart{\n    position:relative;\n    height:330px;\n  }\n  .chart.tall{height:380px}\n  .table-card{margin-top:14px}\n  .table-head{\n    display:flex;\n    justify-content:space-between;\n    align-items:center;\n    gap:12px;\n    flex-wrap:wrap;\n    margin-bottom:12px;\n  }\n  .small{color:var(--muted);font-size:13px}\n  .btn{\n    border:1px solid var(--line);\n    background:rgba(255,255,255,.05);\n    color:var(--text);\n    padding:11px 14px;\n    border-radius:14px;\n    cursor:pointer;\n    transition:.2s ease;\n  }\n  .btn:hover{transform:translateY(-1px);background:rgba(255,255,255,.09)}\n  .btn:disabled{opacity:.45;cursor:not-allowed;transform:none}\n  .table-scroll{\n    overflow:auto;\n    max-height:72vh;\n    border-radius:18px;\n    border:1px solid var(--line);\n    background:rgba(2,6,23,.56);\n  }\n  table{\n    width:100%;\n    border-collapse:collapse;\n    min-width:1100px;\n  }\n  thead th{\n    position:sticky;\n    top:0;\n    z-index:2;\n    background:#0f172a;\n    color:#cbd5e1;\n    text-align:left;\n    font-size:11px;\n    letter-spacing:.10em;\n    text-transform:uppercase;\n    padding:12px 12px;\n    border-bottom:1px solid var(--line);\n  }\n  tbody td{\n    padding:11px 12px;\n    border-bottom:1px solid rgba(148,163,184,.10);\n    color:#e2e8f0;\n    font-size:13px;\n    white-space:nowrap;\n  }\n  tbody tr:hover td{background:rgba(96,165,250,.08)}\n  .badge{\n    display:inline-flex;\n    align-items:center;\n    gap:6px;\n    padding:4px 10px;\n    border-radius:999px;\n    border:1px solid var(--line);\n    font-size:12px;\n  }\n  .high{background:rgba(251,113,133,.14); color:#fecdd3}\n  .med{background:rgba(251,191,36,.14); color:#fde68a}\n  .low{background:rgba(52,211,153,.14); color:#bbf7d0}\n  .cluster{\n    background:rgba(96,165,250,.12);\n    color:#dbeafe;\n  }\n  .empty{\n    padding:22px;\n    color:#94a3b8;\n    text-align:center;\n  }\n  .pager{\n    display:flex;\n    gap:10px;\n    flex-wrap:wrap;\n    align-items:center;\n    justify-content:flex-end;\n    margin-top:12px;\n  }\n  .pager .btn{\n    padding:8px 12px;\n    border-radius:12px;\n  }\n  .pager .pageinfo{\n    color:#cbd5e1;\n    font-size:13px;\n    padding:8px 12px;\n    border:1px solid var(--line);\n    border-radius:12px;\n    background:rgba(255,255,255,.04);\n  }\n  .footer{\n    padding:16px 28px 24px;\n    color:var(--muted);\n    font-size:12px;\n    text-align:center;\n  }\n  @media (max-width: 1200px){\n    .controls,.subcontrols,.kpis,.grid{grid-template-columns:1fr 1fr}\n  }\n  @media (max-width: 760px){\n    .page{width:min(100% - 14px, 1520px)}\n    .hero,.content,.kpis{padding-left:16px;padding-right:16px}\n    .controls,.subcontrols,.kpis,.grid{grid-template-columns:1fr}\n  }\n</style>\n</head>\n<body>\n  <div class=\"page\">\n    <div class=\"shell\">\n      <div class=\"hero\">\n        <div class=\"hero-top\">\n          <div>\n            <h1>📊 Executive Trust Dashboard</h1>\n            <div class=\"sub\">A centered, luxury-style dashboard with full-row search, cluster visibility, pagination, sorting, and one-click export.</div>\n          </div>\n          <div class=\"pill-row\">\n            <div class=\"pill\">Records: ${rows.length}</div>\n            <div class=\"pill\">Columns: ${visibleCols.length}</div>\n            <div class=\"pill\">Numeric: ${numericCols.length}</div>\n            <div class=\"pill\">Anomalies: ${anomalyCount}</div>\n          </div>\n        </div>\n\n        <div class=\"controls\">\n          <input id=\"searchBox\" class=\"input\" type=\"text\" placeholder=\"Search any value in any column...\" />\n          <select id=\"columnFilter\" class=\"select\">\n            <option value=\"\">All columns</option>\n            ${visibleCols.map(c => `<option value=\"${escapeHtml(c)}\">${escapeHtml(c)}</option>`).join('')}\n          </select>\n          <select id=\"riskFilter\" class=\"select\">\n            <option value=\"\">All risk levels</option>\n            <option value=\"High\">High</option>\n            <option value=\"Medium\">Medium</option>\n            <option value=\"Low\">Low</option>\n            <option value=\"Unknown\">Unknown</option>\n          </select>\n          <select id=\"clusterFilter\" class=\"select\" ${clusterExists ? '' : 'disabled'}>\n            <option value=\"\">All clusters</option>\n            ${clusterValues.map(c => `<option value=\"${escapeHtml(c)}\">Cluster ${escapeHtml(c)}</option>`).join('')}\n          </select>\n        </div>\n\n        <div class=\"subcontrols\">\n          <select id=\"sortField\" class=\"select\">\n            <option value=\"\">Sort by default</option>\n            ${visibleCols.map(c => `<option value=\"${escapeHtml(c)}\"${c === amountCol ? ' selected' : ''}>${escapeHtml(c)}</option>`).join('')}\n          </select>\n          <select id=\"sortDirection\" class=\"select\">\n            <option value=\"desc\">Descending</option>\n            <option value=\"asc\">Ascending</option>\n          </select>\n          <select id=\"pageSize\" class=\"select\">\n            <option value=\"25\">25 rows</option>\n            <option value=\"50\">50 rows</option>\n            <option value=\"100\">100 rows</option>\n            <option value=\"250\">250 rows</option>\n            <option value=\"500\">500 rows</option>\n            <option value=\"all\">All rows</option>\n          </select>\n          <button class=\"btn\" id=\"downloadCsvBtn\">Download CSV</button>\n        </div>\n      </div>\n\n      <div class=\"kpis\">\n        <div class=\"kpi\">\n          <div class=\"label\">Total records</div>\n          <div class=\"value\" id=\"kpiRows\">0</div>\n          <div class=\"note\">All rows are searchable</div>\n        </div>\n        <div class=\"kpi\">\n          <div class=\"label\">Total value</div>\n          <div class=\"value\" id=\"kpiTotal\">$0</div>\n          <div class=\"note\">${amountCol ? escapeHtml(amountCol) : 'No amount-like column found'}</div>\n        </div>\n        <div class=\"kpi\">\n          <div class=\"label\">Average value</div>\n          <div class=\"value\" id=\"kpiAvg\">$0</div>\n          <div class=\"note\">Based on the selected numeric metric</div>\n        </div>\n        <div class=\"kpi\">\n          <div class=\"label\">Clusters detected</div>\n          <div class=\"value\" id=\"kpiCluster\">${clusterValues.length || (clusterExists ? 1 : 0)}</div>\n          <div class=\"note\">Cluster field is shown in the table</div>\n        </div>\n      </div>\n\n      <div class=\"content\">\n        <div class=\"grid\">\n          <div class=\"card\">\n            <h3>${amountCol ? escapeHtml(amountCol) : 'Value'} distribution</h3>\n            <div class=\"chart\"><canvas id=\"histChart\"></canvas></div>\n          </div>\n          <div class=\"card\">\n            <h3>${categoryCol ? escapeHtml(categoryCol) : 'Category'} breakdown</h3>\n            <div class=\"chart\"><canvas id=\"catChart\"></canvas></div>\n          </div>\n        </div>\n\n        <div class=\"card\" style=\"margin-bottom:14px\">\n          <h3>Trend preview</h3>\n          <div class=\"chart tall\"><canvas id=\"trendChart\"></canvas></div>\n        </div>\n\n        <div class=\"grid\">\n          <div class=\"card\">\n            <h3>Risk levels</h3>\n            <div class=\"chart\"><canvas id=\"riskChart\"></canvas></div>\n          </div>\n          <div class=\"card\">\n            <h3>Average by numeric column</h3>\n            <div class=\"chart\"><canvas id=\"avgChart\"></canvas></div>\n          </div>\n        </div>\n\n        <div class=\"card table-card\">\n          <div class=\"table-head\">\n            <h3 style=\"margin:0\">Full data table</h3>\n            <div style=\"display:flex;gap:10px;flex-wrap:wrap;align-items:center\">\n              <div class=\"small\"><span id=\"matchedCount\">${rows.length}</span> matched of <span id=\"totalCount\">${rows.length}</span></div>\n              <div class=\"small\" id=\"pageInfo\"></div>\n            </div>\n          </div>\n          <div class=\"table-scroll\">\n            <table>\n              <thead>\n                <tr id=\"tableHead\"></tr>\n              </thead>\n              <tbody id=\"tableBody\"></tbody>\n            </table>\n          </div>\n          <div class=\"pager\" id=\"pager\"></div>\n        </div>\n\n        <div class=\"footer\">Generated automatically · ${new Date().toLocaleString()}</div>\n      </div>\n    </div>\n  </div>\n\n<script>\n  const ROWS = ${rowsJson};\n  const COLS = ${colsJson};\n  const RISK = ${riskJson};\n  const HIST = ${histJson};\n  const CAT = ${catJson};\n  const TREND = ${trendJson};\n  const AVG = ${avgJson};\n  const AMOUNT_COL = ${amountColJson};\n  const CATEGORY_COL = ${categoryColJson};\n  const DATE_COL = ${dateColJson};\n  const NUMERIC_COLS = ${numericColsJson};\n  const CLUSTER_EXISTS = ${clusterExistsJson};\n  const CLUSTER_VALUES = ${clusterValuesJson};\n  const DEFAULT_PAGE_SIZE = ${JSON.stringify(defaultPageSize)};\n\n  const searchBox = document.getElementById('searchBox');\n  const columnFilter = document.getElementById('columnFilter');\n  const riskFilter = document.getElementById('riskFilter');\n  const clusterFilter = document.getElementById('clusterFilter');\n  const sortField = document.getElementById('sortField');\n  const sortDirection = document.getElementById('sortDirection');\n  const pageSizeEl = document.getElementById('pageSize');\n  const tableHead = document.getElementById('tableHead');\n  const tableBody = document.getElementById('tableBody');\n  const matchedCount = document.getElementById('matchedCount');\n  const pageInfo = document.getElementById('pageInfo');\n  const pager = document.getElementById('pager');\n\n  if (DEFAULT_PAGE_SIZE === 'all') {\n    pageSizeEl.value = 'all';\n  } else {\n    pageSizeEl.value = String(DEFAULT_PAGE_SIZE);\n  }\n\n  const fmt = (n) => {\n    const num = Number(n);\n    if (!Number.isFinite(num)) return '—';\n    return new Intl.NumberFormat(undefined, { maximumFractionDigits: 2 }).format(num);\n  };\n\n  const money = (n) => {\n    const num = Number(n);\n    if (!Number.isFinite(num)) return '$0';\n    return '$' + new Intl.NumberFormat(undefined, { maximumFractionDigits: 0 }).format(num);\n  };\n\n  const esc = (v) => String(v ?? '')\n    .replace(/&/g,'&amp;')\n    .replace(/</g,'&lt;')\n    .replace(/>/g,'&gt;')\n    .replace(/\"/g,'&quot;')\n    .replace(/'/g,'&#39;');\n\n  let currentPage = 1;\n\n  function animateCount(el, target, prefix = '', suffix = '') {\n    let current = 0;\n    const step = Math.max(1, Math.ceil(target / 60));\n    const timer = setInterval(() => {\n      current = Math.min(target, current + step);\n      el.textContent = prefix + fmt(current) + suffix;\n      if (current >= target) clearInterval(timer);\n    }, 16);\n  }\n\n  function buildHeader() {\n    tableHead.innerHTML = COLS.map(c => '<th>' + esc(c) + '</th>').join('');\n  }\n\n  function isNumericValue(v) {\n    return typeof v === 'number' && Number.isFinite(v);\n  }\n\n  function compareValues(a, b, col) {\n    const av = a[col];\n    const bv = b[col];\n\n    if (isNumericValue(av) && isNumericValue(bv)) return av - bv;\n\n    const ad = av ? new Date(av) : null;\n    const bd = bv ? new Date(bv) : null;\n    if (ad && bd && !isNaN(ad.getTime()) && !isNaN(bd.getTime())) {\n      return ad.getTime() - bd.getTime();\n    }\n\n    return String(av ?? '').localeCompare(String(bv ?? ''), undefined, { numeric: true, sensitivity: 'base' });\n  }\n\n  function matchesFilters(row, q, selectedCol, selectedRisk, selectedCluster) {\n    if (selectedRisk && String(row.risk_level || 'Unknown') !== selectedRisk) return false;\n\n    if (selectedCluster !== '') {\n      const clusterVal = row.cluster === null || row.cluster === undefined ? '' : String(row.cluster);\n      if (clusterVal !== selectedCluster) return false;\n    }\n\n    if (!q) return true;\n\n    if (selectedCol) {\n      return String(row[selectedCol] ?? '').toLowerCase().includes(q);\n    }\n\n    return COLS.some(c => String(row[c] ?? '').toLowerCase().includes(q));\n  }\n\n  function getFilteredRows() {\n    const q = searchBox.value.trim().toLowerCase();\n    const selectedCol = columnFilter.value;\n    const selectedRisk = riskFilter.value;\n    const selectedCluster = clusterFilter ? clusterFilter.value : '';\n\n    const filtered = ROWS.filter(r => matchesFilters(r, q, selectedCol, selectedRisk, selectedCluster));\n\n    const sortCol = sortField.value;\n    const sortDir = sortDirection.value === 'asc' ? 1 : -1;\n    if (sortCol) {\n      filtered.sort((a, b) => compareValues(a, b, sortCol) * sortDir);\n    }\n    return filtered;\n  }\n\n  function getPageSize() {\n    return pageSizeEl.value === 'all' ? 'all' : Math.max(1, Number(pageSizeEl.value) || 25);\n  }\n\n  function renderPager(totalRows, pageSize) {\n    pager.innerHTML = '';\n\n    if (pageSize === 'all' || totalRows <= pageSize) {\n      pageInfo.textContent = totalRows ? 'Showing all matched rows' : 'No rows matched';\n      return;\n    }\n\n    const totalPages = Math.max(1, Math.ceil(totalRows / pageSize));\n    if (currentPage > totalPages) currentPage = totalPages;\n\n    const prev = document.createElement('button');\n    prev.className = 'btn';\n    prev.textContent = 'Prev';\n    prev.disabled = currentPage <= 1;\n    prev.onclick = () => { currentPage = Math.max(1, currentPage - 1); render(); };\n\n    const next = document.createElement('button');\n    next.className = 'btn';\n    next.textContent = 'Next';\n    next.disabled = currentPage >= totalPages;\n    next.onclick = () => { currentPage = Math.min(totalPages, currentPage + 1); render(); };\n\n    const info = document.createElement('span');\n    info.className = 'pageinfo';\n    info.textContent = 'Page ' + currentPage + ' / ' + totalPages;\n\n    pager.appendChild(prev);\n    pager.appendChild(info);\n    pager.appendChild(next);\n\n    const start = ((currentPage - 1) * pageSize) + 1;\n    const end = Math.min(totalRows, currentPage * pageSize);\n    pageInfo.textContent = 'Rows ' + start + '–' + end + ' of ' + totalRows;\n  }\n\n  function renderTable(rows) {\n    const pageSize = getPageSize();\n\n    if (!rows.length) {\n      tableBody.innerHTML = '<tr><td class=\"empty\" colspan=\"' + COLS.length + '\">No rows match the current filters.</td></tr>';\n      matchedCount.textContent = '0';\n      pageInfo.textContent = 'No rows matched';\n      pager.innerHTML = '';\n      return;\n    }\n\n    let pageRows = rows;\n    if (pageSize !== 'all') {\n      const start = (currentPage - 1) * pageSize;\n      pageRows = rows.slice(start, start + pageSize);\n    }\n\n    tableBody.innerHTML = pageRows.map(row => {\n      const cells = COLS.map(col => {\n        const v = row[col];\n\n        if (col === 'risk_level') {\n          const cls = v === 'High' ? 'high' : v === 'Medium' ? 'med' : 'low';\n          const label = v || 'Unknown';\n          return '<td><span class=\"badge ' + cls + '\">' + esc(label) + '</span></td>';\n        }\n\n        if (col === 'cluster') {\n          return '<td><span class=\"badge cluster\">Cluster ' + esc(v) + '</span></td>';\n        }\n\n        if (typeof v === 'number') return '<td>' + fmt(v) + '</td>';\n        if (v === null || v === undefined || v === '') return '<td style=\"color:#64748b\">—</td>';\n        return '<td>' + esc(v) + '</td>';\n      }).join('');\n\n      return '<tr>' + cells + '</tr>';\n    }).join('');\n\n    matchedCount.textContent = String(rows.length);\n    renderPager(rows.length, pageSize);\n  }\n\n  function exportCsv(rows) {\n    const header = COLS.join(',');\n    const body = rows.map(r => COLS.map(c => {\n      const text = r[c] === null || r[c] === undefined ? '' : String(r[c]);\n      return '\"' + text.replace(/\"/g, '\"\"') + '\"';\n    }).join(','));\n    return [header].concat(body).join('\\\\n');\n  }\n\n  function downloadTextFile(filename, text) {\n    const blob = new Blob([text], { type: 'text/csv;charset=utf-8;' });\n    const url = URL.createObjectURL(blob);\n    const a = document.createElement('a');\n    a.href = url;\n    a.download = filename;\n    document.body.appendChild(a);\n    a.click();\n    a.remove();\n    URL.revokeObjectURL(url);\n  }\n\n  function renderCharts() {\n    if (typeof Chart === 'undefined') return;\n\n    const chartTheme = {\n      responsive: true,\n      maintainAspectRatio: false,\n      animation: { duration: 1100, easing: 'easeOutQuart' },\n      plugins: {\n        legend: { labels: { color: '#cbd5e1' } },\n        tooltip: {\n          backgroundColor: '#0f172a',\n          borderColor: 'rgba(148,163,184,.20)',\n          borderWidth: 1,\n          titleColor: '#fff',\n          bodyColor: '#cbd5e1'\n        }\n      },\n      scales: {\n        x: { ticks: { color: '#94a3b8' }, grid: { color: 'rgba(148,163,184,.08)' } },\n        y: { ticks: { color: '#94a3b8' }, grid: { color: 'rgba(148,163,184,.08)' } }\n      }\n    };\n\n    new Chart(document.getElementById('histChart'), {\n      type: 'bar',\n      data: {\n        labels: HIST.labels,\n        datasets: [{\n          label: AMOUNT_COL || 'Count',\n          data: HIST.data,\n          borderRadius: 8\n        }]\n      },\n      options: { ...chartTheme, plugins: { ...chartTheme.plugins, legend: { display: false } } }\n    });\n\n    new Chart(document.getElementById('catChart'), {\n      type: 'bar',\n      data: {\n        labels: CAT.labels,\n        datasets: [{\n          label: 'Count',\n          data: CAT.data,\n          borderRadius: 8\n        }]\n      },\n      options: { ...chartTheme, indexAxis: 'y', plugins: { ...chartTheme.plugins, legend: { display: false } } }\n    });\n\n    const trendLabels = TREND.map(p => String(p.x).slice(0, 10));\n    const trendValues = TREND.map(p => p.y);\n\n    new Chart(document.getElementById('trendChart'), {\n      type: 'line',\n      data: {\n        labels: trendLabels,\n        datasets: [{\n          label: AMOUNT_COL || 'Value',\n          data: trendValues,\n          tension: 0.32,\n          fill: true\n        }]\n      },\n      options: { ...chartTheme, plugins: { ...chartTheme.plugins, legend: { display: false } } }\n    });\n\n    new Chart(document.getElementById('riskChart'), {\n      type: 'doughnut',\n      data: {\n        labels: Object.keys(RISK),\n        datasets: [{ data: Object.values(RISK) }]\n      },\n      options: {\n        responsive: true,\n        maintainAspectRatio: false,\n        plugins: { legend: { position: 'bottom', labels: { color: '#cbd5e1' } } }\n      }\n    });\n\n    const avgLabels = AVG.map(x => x.col);\n    const avgData = AVG.map(x => Math.round(x.avg * 100) / 100);\n\n    new Chart(document.getElementById('avgChart'), {\n      type: 'bar',\n      data: {\n        labels: avgLabels.map(x => x.replace(/_/g, ' ')),\n        datasets: [{\n          label: 'Average',\n          data: avgData,\n          borderRadius: 8\n        }]\n      },\n      options: {\n        ...chartTheme,\n        plugins: { ...chartTheme.plugins, legend: { display: false } }\n      }\n    });\n  }\n\n  function render() {\n    const filtered = getFilteredRows();\n    renderTable(filtered);\n  }\n\n  buildHeader();\n\n  const refresh = () => { currentPage = 1; render(); };\n\n  searchBox.addEventListener('input', refresh);\n  columnFilter.addEventListener('change', refresh);\n  riskFilter.addEventListener('change', refresh);\n  if (clusterFilter) clusterFilter.addEventListener('change', refresh);\n  sortField.addEventListener('change', refresh);\n  sortDirection.addEventListener('change', refresh);\n  pageSizeEl.addEventListener('change', refresh);\n\n  document.getElementById('downloadCsvBtn').addEventListener('click', () => {\n    const filtered = getFilteredRows();\n    downloadTextFile('executive_dashboard_filtered.csv', exportCsv(filtered));\n  });\n\n  animateCount(document.getElementById('kpiRows'), ROWS.length);\n  animateCount(document.getElementById('kpiTotal'), Math.round(${totalValue}), '$');\n  animateCount(document.getElementById('kpiAvg'), Math.round(${avgValue}), '$');\n  animateCount(document.getElementById('kpiCluster'), ${clusterValues.length || (clusterExists ? 1 : 0)});\n\n  renderCharts();\n  render();\n</script>\n</body>\n</html>`;\n\n  return [{\n    json: {\n      data: html,\n      mimeType: 'text/html',\n      fileName: 'executive_dashboard.html'\n    }\n  }];\n\n} catch (e) {\n  return [{\n    json: {\n      data: `<!DOCTYPE html>\n<html>\n<head>\n<meta charset=\"UTF-8\" />\n<title>Dashboard Error</title>\n<style>\n  body{\n    margin:0;\n    min-height:100vh;\n    display:flex;\n    align-items:center;\n    justify-content:center;\n    background:#020617;\n    color:#fecaca;\n    font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;\n    padding:24px;\n  }\n  .box{\n    width:min(920px,100%);\n    background:#111827;\n    border:1px solid rgba(248,113,113,.25);\n    border-radius:24px;\n    padding:28px;\n    box-shadow:0 20px 60px rgba(0,0,0,.35);\n  }\n  pre{\n    white-space:pre-wrap;\n    word-break:break-word;\n    background:#0b1220;\n    padding:18px;\n    border-radius:16px;\n    color:#fca5a5;\n    overflow:auto;\n  }\n</style>\n</head>\n<body>\n  <div class=\"box\">\n    <h2>Dashboard generation failed</h2>\n    <pre>${String(e.message || e).replace(/</g, '&lt;')}</pre>\n  </div>\n</body>\n</html>`,\n      mimeType: 'text/html',\n      fileName: 'dashboard_error.html'\n    }\n  }];\n}"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1184,
+        -240
+      ],
+      "id": "3db9c20f-cc7d-4651-b5b7-9fba29af5b3e",
+      "name": "Interactive Dashboard Generator1"
+    },
+    {
+      "parameters": {
+        "jsCode": "// ---------------------------------------------------------------\n// TRULY UNIVERSAL BUSINESS INSIGHTS AGGREGATOR (v5 – includes totals)\n// Works for any dataset – trips, sales, patients, HR, inventory…\n// ---------------------------------------------------------------\nconst items = $input.all();\nif (!items || items.length === 0) return [];\n\nconst rows = items.map(i => i.json);\nconst firstRow = rows[0];\n\n// --- 1. Metadata from Data Cleaning ---\nconst numericCols = (firstRow._numeric_cols || '').split(',').filter(c => c.trim());\nconst dateCols    = (firstRow._date_cols   || '').split(',').filter(c => c.trim());\nconst textColsRaw = (firstRow._text_cols   || '').split(',').filter(c => c.trim());\n\n// --- 2. Choose the best primary metric ---\nconst businessMetricWords = [\n  'revenue', 'amount', 'sales', 'total', 'price', 'value',\n  'cost', 'profit', 'income', 'expense',\n  'passengers', 'delay', 'duration', 'score', 'rating',\n  'quantity', 'qty', 'count', 'volume', 'weight',\n  'age', 'salary', 'experience', 'billing'\n];\nconst rowIndexWords = ['row', 'index', 'sno', 'sr', 'no', '#'];\n\nconst isRowIndex = col => rowIndexWords.some(w => col.toLowerCase().includes(w));\nconst isBusinessMetric = col => businessMetricWords.some(w => col.toLowerCase().includes(w));\n\nconst nonIndexNumeric = numericCols.filter(c => !isRowIndex(c));\nconst primaryMetric = nonIndexNumeric.length > 0\n  ? (nonIndexNumeric.find(isBusinessMetric) || nonIndexNumeric[0])\n  : numericCols[0];\n\nconsole.log('Primary metric:', primaryMetric);\n\n// --- 3. Group‑by columns (skip IDs, emails, exact personal names) ---\nconst exactNameCols = ['first_name', 'last_name', 'full_name'];\nconst groupCols = textColsRaw.filter(col => {\n  const lower = col.toLowerCase();\n  if (lower.includes('id') || lower.includes('email') || lower.includes('phone')) return false;\n  if (exactNameCols.includes(lower)) return false;\n  const vals = rows.map(r => r[col]).filter(v => v !== null && v !== undefined && v !== '');\n  if (vals.length < 2) return false;\n  const uniqueRatio = new Set(vals.map(String)).size / vals.length;\n  return uniqueRatio < 0.8;\n});\n\nconsole.log('Group dimensions:', groupCols);\n\n// --- 4. Group statistics (now with total + average) ---\nconst groupResults = [];\nfor (const groupCol of groupCols) {\n  const groups = {};\n  for (const row of rows) {\n    const key = row[groupCol];\n    if (key === null || key === undefined || key === '') continue;\n    const keyStr = String(key);\n    if (!groups[keyStr]) {\n      groups[keyStr] = { key: keyStr, count: 0 };\n      numericCols.forEach(nc => {\n        groups[keyStr][nc + '_sum'] = 0;\n        groups[keyStr][nc + '_values'] = [];\n      });\n    }\n    groups[keyStr].count++;\n    for (const nc of numericCols) {\n      const val = row[nc];\n      if (typeof val === 'number' && !isNaN(val)) {\n        groups[keyStr][nc + '_sum'] += val;\n        groups[keyStr][nc + '_values'].push(val);\n      }\n    }\n  }\n\n  const groupArray = Object.values(groups).map(g => {\n    const stats = {};\n    for (const nc of numericCols) {\n      const total = g[nc + '_sum'];\n      const count = g[nc + '_values'].length;\n      stats[nc] = {\n        total: Math.round(total * 100) / 100,\n        average: count > 0 ? Math.round((total / count) * 100) / 100 : 0\n      };\n    }\n    return {\n      group_column: groupCol,\n      group_name: g.key,\n      count: g.count,\n      metrics: stats\n    };\n  });\n\n  // Sort by primary metric total descending (or average if total not available)\n  const sortKey = primaryMetric ? primaryMetric : numericCols[0];\n  groupArray.sort((a, b) => {\n    const aVal = a.metrics[sortKey]?.total ?? 0;\n    const bVal = b.metrics[sortKey]?.total ?? 0;\n    return bVal - aVal;\n  });\n\n  groupResults.push({\n    dimension: groupCol,\n    top_groups: groupArray.slice(0, 5),\n    bottom_groups: groupArray.slice(-5),\n    total_groups: groupArray.length,\n  });\n}\n\n// --- 5. Hour distribution ---\nlet hourAnalysis = null;\nif (dateCols.length > 0) {\n  const timeCol = dateCols[0];\n  const hourCounts = {};\n  for (const row of rows) {\n    const val = row[timeCol];\n    if (val) {\n      const d = new Date(val);\n      if (!isNaN(d.getTime())) {\n        const hour = d.getHours();\n        hourCounts[hour] = (hourCounts[hour] || 0) + 1;\n      }\n    }\n  }\n  hourAnalysis = hourCounts;\n}\n\n// --- 6. Data Quality Summary ---\nconst qualityIssues = [];\nfor (const nc of nonIndexNumeric) {\n  const negCount = rows.filter(r => typeof r[nc] === 'number' && r[nc] < 0).length;\n  if (negCount > 0) qualityIssues.push({ column: nc, issue: `${negCount} negative values found` });\n}\nfor (const nc of nonIndexNumeric) {\n  const vals = rows.map(r => Number(r[nc])).filter(v => !isNaN(v));\n  if (vals.length > 2) {\n    const mean = vals.reduce((a,b)=>a+b,0)/vals.length;\n    const max = Math.max(...vals);\n    if (mean > 0 && max / mean > 100) qualityIssues.push({ column: nc, issue: `Extreme values (max ${max.toFixed(1)} vs avg ${mean.toFixed(1)}) – possible data error` });\n  }\n}\nlet peakHourNote = null;\nif (hourAnalysis) {\n  const peak = Object.entries(hourAnalysis).sort((a,b) => b[1]-a[1])[0];\n  if (peak && peak[0] == 0) peakHourNote = \"Peak hour is 0 (midnight) – verify if this is correct or a timestamp/timezone error.\";\n}\n\nconst dataQualitySummary = { issues: qualityIssues, peak_hour_note: peakHourNote };\n\n// --- 7. Overall KPIs (total + average) ---\nlet totalMetric = 0, metricCount = 0;\nif (primaryMetric) {\n  for (const r of rows) {\n    const v = Number(r[primaryMetric]);\n    if (!isNaN(v)) { totalMetric += v; metricCount++; }\n  }\n}\nconst avgMetric = metricCount ? totalMetric / metricCount : 0;\n\nconst businessInsights = {\n  dataset_name: \"Automated Data Analysis\",\n  total_records: rows.length,\n  primary_metric: primaryMetric || 'N/A',\n  primary_metric_total: Math.round(totalMetric * 100) / 100,\n  primary_metric_average: Math.round(avgMetric * 100) / 100,\n  peak_hour: hourAnalysis ? Object.entries(hourAnalysis).sort((a,b) => b[1]-a[1])[0]?.[0] : null,\n  group_insights: groupResults,\n  data_quality: dataQualitySummary,\n};\n\nconsole.log('BUSINESS INSIGHTS:', JSON.stringify(businessInsights, null, 2));\n\n// Attach to every row\nitems.forEach(item => { item.json.business_insights = businessInsights; });\nreturn items;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -3952,
+        -240
+      ],
+      "id": "84d68c19-04bc-4155-9bde-abc5488a0dd9",
+      "name": "Business Insights Aggregator"
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "gpt-4o-mini",
+          "mode": "list",
+          "cachedResultName": "gpt-4o-mini"
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        -960,
+        192
+      ],
+      "id": "9e633d78-115f-400a-96ce-0386559a24a0",
+      "name": "OpenAI Chat Model",
+      "credentials": {
+        "openAiApi": {
+          "id": "CL3mXeeMg3ghYQEn",
+          "name": "OpenAI account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "appendOrUpdate",
+        "documentId": {
+          "__rl": true,
+          "value": "1hPFf9L7nUIkT5MiCVq_OAOW0iSJwmI_oDOqnMP1VpEw",
+          "mode": "list",
+          "cachedResultName": "Customer",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1hPFf9L7nUIkT5MiCVq_OAOW0iSJwmI_oDOqnMP1VpEw/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Sheet1",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1hPFf9L7nUIkT5MiCVq_OAOW0iSJwmI_oDOqnMP1VpEw/edit#gid=0"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "VisitID": "={{ $json.visitid }}",
+            "Date": "={{ $json.date }}",
+            "Time": "={{ $json.time }}",
+            "PatientName": "={{ $json.patientname }}",
+            "Age": "={{ $json.age }}",
+            "Department": "={{ $json.department }}",
+            "Doctor": "={{ $json.doctor }}",
+            "Diagnosis": "={{ $json.diagnosis }}",
+            "BillingAmount": "={{ $json.billingamount }}",
+            "Comments": "={{ $json.comments }}"
+          },
+          "matchingColumns": [
+            "VisitID"
+          ],
+          "schema": [
+            {
+              "id": "VisitID",
+              "displayName": "VisitID",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Date",
+              "displayName": "Date",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Time",
+              "displayName": "Time",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "PatientName",
+              "displayName": "PatientName",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Age",
+              "displayName": "Age",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Department",
+              "displayName": "Department",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Doctor",
+              "displayName": "Doctor",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Diagnosis",
+              "displayName": "Diagnosis",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "BillingAmount",
+              "displayName": "BillingAmount",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Comments",
+              "displayName": "Comments",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        -1200,
+        -672
+      ],
+      "id": "d7a2e706-3c9b-4e2b-a63b-f47b2df23ee1",
+      "name": "Data after analyzing",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "AwlbE8H5Zw2UiDE0",
+          "name": "Google Sheets OAuth2 API"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Data Cleaning1": {
+      "main": [
+        [
+          {
+            "node": "Universal Dedup1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Data Transformation1": {
+      "main": [
+        [
+          {
+            "node": "Statistical & Probability Analyzer1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Handling Missing Data1": {
+      "main": [
+        [
+          {
+            "node": "Business Insights Aggregator",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Statistical & Probability Analyzer1": {
+      "main": [
+        [
+          {
+            "node": "Outlier Detection1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Outlier Detection1": {
+      "main": [
+        [
+          {
+            "node": "Z‑Score Based Outlier Detection1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Correlation Matrix1": {
+      "main": [
+        [
+          {
+            "node": "Simple Linear Regression1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Simple Linear Regression1": {
+      "main": [
+        [
+          {
+            "node": "Decision Rules1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Clustering1": {
+      "main": [
+        [
+          {
+            "node": "Data Quality Index1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Automated Anomaly Alerts1": {
+      "main": [
+        [
+          {
+            "node": "Send a message5",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Data Profiler1": {
+      "main": [
+        [
+          {
+            "node": "Safety Row Limit1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Safety Row Limit1": {
+      "main": [
+        [
+          {
+            "node": "Data Cleaning1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Data Validation Rules1": {
+      "main": [
+        [
+          {
+            "node": "Handling Missing Data1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Z‑Score Based Outlier Detection1": {
+      "main": [
+        [
+          {
+            "node": "Correlation Matrix1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Decision Rules1": {
+      "main": [
+        [
+          {
+            "node": "Clustering1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Enhanced HTML Report with Charts1": {
+      "main": [
+        [
+          {
+            "node": "Convert markdown to HTML",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code node to prepare data for the AI1": {
+      "main": [
+        [
+          {
+            "node": "AI Agent2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent2": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript9",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenRouter Chat Model2": {
+      "ai_languageModel": [
+        []
+      ]
+    },
+    "Convert to File": {
+      "main": [
+        [
+          {
+            "node": "Send a message4",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Convert markdown to HTML": {
+      "main": [
+        [
+          {
+            "node": "Send DataAnalysis message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Convert markdown to HTML3": {
+      "main": [
+        [
+          {
+            "node": "Send DataAnalysis message3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript6": {
+      "main": [
+        [
+          {
+            "node": "Convert markdown to HTML3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Management‑Friendly Export1": {
+      "main": [
+        [
+          {
+            "node": "Automated Anomaly Alerts1",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Code node to prepare data for the AI1",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Interactive Dashboard Generator1",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Enhanced HTML Report with Charts1",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Data after analyzing",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build HTML File1": {
+      "main": [
+        [
+          {
+            "node": "Send a message3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Data Quality Index1": {
+      "main": [
+        [
+          {
+            "node": "Time‑Aware Forecasting1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Time‑Aware Forecasting1": {
+      "main": [
+        [
+          {
+            "node": "Management‑Friendly Export1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Universal Dedup1": {
+      "main": [
+        [
+          {
+            "node": "Data Validation Rules1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get row(s) in sheet1": {
+      "main": [
+        [
+          {
+            "node": "Data Profiler1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Schedule Trigger1": {
+      "main": [
+        [
+          {
+            "node": "Get row(s) in sheet1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript9": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript6",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Interactive Dashboard Generator1": {
+      "main": [
+        [
+          {
+            "node": "Build HTML File1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Business Insights Aggregator": {
+      "main": [
+        [
+          {
+            "node": "Data Transformation1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent2",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Data after analyzing": {
+      "main": [
+        [
+          {
+            "node": "Convert to File",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "f8ffd787-dbfb-45d4-8ec4-788aa13dd27d",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "ab6f4bc8898b55e7b4feae65d8f639a7e297c7dc7d4324643d7d06426a7cad8f"
+  },
+  "id": "WBZeArD4Mkz6TqUt",
+  "tags": []
+}
