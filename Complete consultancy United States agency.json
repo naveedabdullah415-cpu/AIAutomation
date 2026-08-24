@@ -1,0 +1,1556 @@
+{
+  "name": "Complete consultancy United States agency",
+  "nodes": [
+    {
+      "parameters": {
+        "formTitle": "US University Admissions — Student Profile",
+        "formDescription": "Tell us about yourself and your study goals. Our team will match you with US universities that fit your profile — completely free, no consultant fees.",
+        "formFields": {
+          "values": [
+            {
+              "fieldLabel": "Full Name",
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "Email",
+              "fieldType": "email",
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "Phone Number",
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "Level of Education",
+              "fieldType": "dropdown",
+              "fieldOptions": {
+                "values": [
+                  {
+                    "option": "10th"
+                  },
+                  {
+                    "option": "11th"
+                  },
+                  {
+                    "option": "12th"
+                  },
+                  {
+                    "option": "Bachelor's"
+                  },
+                  {
+                    "option": "Master's"
+                  },
+                  {
+                    "option": "PhD"
+                  }
+                ]
+              },
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "Target Program",
+              "placeholder": "e.g. MS in Computer Science",
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "GPA / CGPA",
+              "placeholder": "e.g. 3.6 / 4.0 or 8.2 / 10",
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "Percentage",
+              "placeholder": "e.g. 85%",
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "Annual Family Income",
+              "placeholder": "e.g. $8,000 per year",
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "SAT Score",
+              "fieldType": "number"
+            },
+            {
+              "fieldLabel": "English Proficiency Test",
+              "fieldType": "dropdown",
+              "fieldOptions": {
+                "values": [
+                  {
+                    "option": "IELTS"
+                  },
+                  {
+                    "option": "TOEFL"
+                  },
+                  {
+                    "option": "Duolingo"
+                  },
+                  {
+                    "option": "None"
+                  }
+                ]
+              }
+            },
+            {
+              "fieldLabel": "English Test Score"
+            },
+            {
+              "fieldLabel": "Budget Range",
+              "placeholder": "e.g. $20,000 - $35,000 per year",
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "Applying for Financial Aid/Scholarship?",
+              "fieldType": "dropdown",
+              "fieldOptions": {
+                "values": [
+                  {
+                    "option": "Yes"
+                  },
+                  {
+                    "option": "No"
+                  }
+                ]
+              },
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "Preferred US States or Regions (optional)",
+              "placeholder": "e.g. any / Northeast / California"
+            },
+            {
+              "fieldLabel": "Anything else we should know? (optional)"
+            }
+          ]
+        },
+        "options": {
+          "buttonLabel": "Submit Profile",
+          "path": "university-lead",
+          "respondWithOptions": {
+            "values": {
+              "formSubmittedText": "Thank you! We have received your profile and will email you your university matches shortly."
+            }
+          }
+        }
+      },
+      "id": "abb2b7e3-44e5-455c-aa39-47b0b54756d6",
+      "name": "Lead Intake Form",
+      "type": "n8n-nodes-base.formTrigger",
+      "typeVersion": 2.6,
+      "position": [
+        -1136,
+        112
+      ],
+      "webhookId": "420dd7e4-f3c5-45b6-84f1-e5327e7337a1"
+    },
+    {
+      "parameters": {
+        "jsCode": "const f = $input.first().json;\nconst missing = [];\nfunction blank(v) { return v === undefined || v === null || String(v).trim() === ''; }\nif (blank(f['Full Name'])) missing.push('Full Name');\nif (blank(f['Email'])) missing.push('Email');\nif (blank(f['Phone Number'])) missing.push('Phone Number');\nif (blank(f['Level of Education'])) missing.push('Level of Education');\nif (blank(f['Target Program'])) missing.push('Target Program');\nif (blank(f['GPA / CGPA'])) missing.push('GPA / CGPA');\nif (blank(f['Percentage'])) missing.push('Percentage');\nif (blank(f['Annual Family Income'])) missing.push('Annual Family Income');\nif (blank(f['Budget Range'])) missing.push('Budget Range');\nif (blank(f['Applying for Financial Aid/Scholarship?'])) missing.push('Applying for Financial Aid/Scholarship?');\nreturn [{ json: Object.assign({}, f, { _missing_fields: missing, _has_missing: missing.length > 0 }) }];"
+      },
+      "id": "771b8576-d5ba-46f8-ae80-805738e4d93c",
+      "name": "Check Required Fields",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -928,
+        96
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json._has_missing }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "d7927b7f-b979-439f-91ea-0c3b82594e93",
+      "name": "Has Missing Fields?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -704,
+        112
+      ]
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $json.Email }}",
+        "subject": "Action Needed — A Few Details Are Missing From Your Profile",
+        "message": "=Dear {{ $json['Full Name'] }},<br><br>Thanks for starting your US university profile with us. Before we can begin your free university search, we need the following details:<br><br><ul>{{ $json._missing_fields.map(function(m){ return '<li>' + m + '</li>'; }).join('') }}</ul>Please reply to this email with the missing information, or resubmit the form, and we'll get started right away — completely free of charge.<br><br>Best regards,<br>US University Education Consultancy",
+        "options": {}
+      },
+      "id": "fac56b1b-68c2-4e04-935e-c6c7b83bf9c9",
+      "name": "Request Missing Info",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        -400,
+        -48
+      ],
+      "webhookId": "2b01c912-e23f-49dd-8896-792b2839035f",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "kXwCYiBFxjxUw9Sm",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json['Level of Education'] }}",
+                    "rightValue": "10th",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "27d167c2-d1dc-40b8-8f03-356fd2612a24"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "10th - Not Eligible"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json['Level of Education'] }}",
+                    "rightValue": "11th",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "0c486f34-60c2-402c-b1a1-a01c134b73f9"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "11th - Needs Documents"
+            }
+          ]
+        },
+        "options": {
+          "fallbackOutput": "extra",
+          "renameFallbackOutput": "Eligible"
+        }
+      },
+      "id": "11d383b3-351f-41ff-bb77-0f73e2f8aa04",
+      "name": "Route by Education Level",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        -496,
+        160
+      ]
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $json.Email }}",
+        "subject": "Your US University Application — Eligibility Update",
+        "message": "=<div style=\"font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; max-width: 600px; margin: 0 auto; background-color: #f9f9f9; border-radius: 10px; overflow: hidden; box-shadow: 0 4px 15px rgba(0,0,0,0.05); border: 1px solid #e0e0e0;\">\n    \n    <!-- Header Section -->\n    <div style=\"background-color: #0f172a; color: #ffffff; padding: 35px 25px; text-align: center;\">\n        <h1 style=\"margin: 0; font-size: 24px; font-weight: 600; letter-spacing: 0.5px;\">Your US University Journey</h1>\n        <p style=\"margin: 10px 0 0 0; font-size: 15px; color: #94a3b8;\">US University Education Consultancy</p>\n    </div>\n    \n    <!-- Body Section -->\n    <div style=\"padding: 40px 30px; background-color: #ffffff; color: #334155; line-height: 1.6; font-size: 16px;\">\n        <p style=\"margin-top: 0;\">Dear <strong>{{ $json[\"Full Name\"] }}</strong>,</p>\n        \n        <p>Thank you for your fantastic enthusiasm and interest in studying in the United States! We love seeing students with such early ambition and drive.</p>\n        \n        <!-- Highlight/Dashboard Box -->\n        <div style=\"background-color: #f8fafc; border-left: 4px solid #3b82f6; padding: 20px; margin: 30px 0; border-radius: 0 8px 8px 0;\">\n            <p style=\"margin: 0; font-size: 15px;\">\n                <strong>Current Status:</strong> Based on your current education level (<strong>10th grade</strong>), you are not quite at the stage to apply for US university admissions just yet.\n            </p>\n        </div>\n        \n        <p>However, this is just the beginning! We strongly encourage you to focus on your studies and <strong>reconnect with us once you reach the 11th or 12th grade</strong>.</p>\n        \n        <p>When the time is right, we will be absolutely thrilled to step in and guide you through the entire application process — <strong>completely free of charge</strong>.</p>\n        \n        <p>Keep up the great work, and we look forward to helping you achieve your dreams in the future!</p>\n        \n        <br>\n        <p style=\"margin-bottom: 0; font-size: 15px;\">Best regards,</p>\n        <p style=\"margin-top: 5px; font-weight: 600; color: #0f172a; font-size: 16px;\">The Admissions Team</p>\n    </div>\n    \n    <!-- Footer Section -->\n    <div style=\"background-color: #f1f5f9; text-align: center; padding: 20px; font-size: 12px; color: #64748b;\">\n        &copy; 2026 US University Education Consultancy.<br>Empowering students to achieve global education.\n    </div>\n    \n</div>",
+        "options": {}
+      },
+      "id": "32549c2b-d95a-4e1f-a2b8-943644d4b5a7",
+      "name": "Send Rejection (10th)",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        -96,
+        -32
+      ],
+      "webhookId": "b85b95ed-f89b-45d4-96cb-89b5f8f63e55",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "kXwCYiBFxjxUw9Sm",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $json.Email }}",
+        "subject": "Action Needed — Submit Your Hope Certificate / Predicted Grades",
+        "message": "=<p>Dear {{ $json['Full Name'] }},</p>\n\n<p>Thank you for submitting your profile! We are excited to help you start your journey toward studying in the United States.</p>\n\n<p>Since you are currently in the 11th grade, we can begin building your personalized US university and scholarship plan right away. To ensure we match you with the best possible options, we just need a quick academic update from you.</p>\n\n<p>Please reply directly to this email and attach <strong>one</strong> of the following documents:</p>\n<ul>\n  <li>Your <strong>Hope Certificate</strong>, or</li>\n  <li>Your official <strong>Predicted Grades</strong> from your school.</li>\n</ul>\n\n<p>Once we receive your document, our expert team will immediately proceed with your free, customized university matching.</p>\n\n<p>We look forward to hearing from you and helping you achieve your study abroad dreams!</p>\n\n<p>Warm regards,<br>\n<strong>US University Education Consultancy</strong></p>",
+        "options": {}
+      },
+      "id": "9e5e5612-7451-4a94-9299-436fab26a5dc",
+      "name": "Request Documents (11th)",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        -128,
+        144
+      ],
+      "webhookId": "12bc774b-7c67-4d86-a6b1-f503186bbb93",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "kXwCYiBFxjxUw9Sm",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const f = $input.first().json;\nconst lvl = String(f['Level of Education'] || '');\nconst prog = String(f['Target Program'] || '').toLowerCase();\n// predominant degree: 3 = bachelor, 4 = graduate\nlet degree = '3';\nif (lvl === \"Bachelor's\" || lvl === \"Master's\" || lvl === 'PhD' || /(\\bms\\b|m\\.s|master|phd|mba|graduate|msc|m\\.eng)/.test(prog)) { degree = '4'; }\nreturn [{ json: Object.assign({}, f, { _degree: degree }) }];"
+      },
+      "id": "471d7e0e-d58a-48ba-bd59-356681e1febd",
+      "name": "Build Scorecard Query",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -320,
+        304
+      ]
+    },
+    {
+      "parameters": {
+        "url": "https://api.data.gov/ed/collegescorecard/v1/schools",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpTemplatedCustomAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "fields",
+              "value": "id,school.name,school.city,school.state,school.school_url,latest.student.size,latest.admissions.admission_rate.overall,latest.admissions.sat_scores.overall,latest.cost.tuition.in_state,latest.cost.tuition.out_of_state,latest.cost.avg_net_price.overall,latest.cost.attendance.academic_year"
+            },
+            {
+              "name": "school.degrees_awarded.predominant",
+              "value": "={{ $json._degree }}"
+            },
+            {
+              "name": "school.operating",
+              "value": "1"
+            },
+            {
+              "name": "latest.student.size__range",
+              "value": "1000.."
+            },
+            {
+              "name": "sort",
+              "value": "latest.cost.avg_net_price.overall"
+            },
+            {
+              "name": "per_page",
+              "value": "30"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      },
+      "id": "fe28fe91-8d08-48a4-8ec3-951ae82b9e35",
+      "name": "Fetch Universities (US Gov API)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        -144,
+        304
+      ],
+      "credentials": {
+        "httpTemplatedCustomAuth": {
+          "id": "0RgoEgGSSewyInyH",
+          "name": "College Scorecard API (Ali)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all().map(function(i){ return i.json; });\nlet results = [];\nif (items.length === 1 && items[0] && Array.isArray(items[0].results)) { results = items[0].results; }\nelse if (items.length === 1 && Array.isArray(items[0])) { results = items[0]; }\nelse { results = items; }\nfunction money(v){ return (v !== null && v !== undefined && v !== '') ? ('USD ' + Number(v).toLocaleString('en-US') + ' /year') : 'Not reported'; }\nconst picked = [];\nfor (let i = 0; i < results.length; i++) {\n  if (picked.length >= 10) break;\n  const r = results[i] || {};\n  const name = r['school.name'];\n  if (!name) continue;\n  const size = r['latest.student.size'];\n  const rate = r['latest.admissions.admission_rate.overall'];\n  let website = r['school.school_url'] || '';\n  if (website && !/^https?:/i.test(website)) website = 'https://' + website;\n  picked.push({\n    university_name: name,\n    city: r['school.city'] || '',\n    state: r['school.state'] || '',\n    location: [r['school.city'], r['school.state']].filter(Boolean).join(', '),\n    website: website,\n    student_count: (size !== null && size !== undefined) ? String(size) : 'Not reported',\n    acceptance_rate: (rate !== null && rate !== undefined) ? (Math.round(rate * 1000) / 10) + '%' : 'Not reported',\n    sat_scores_reported: r['latest.admissions.sat_scores.overall'] || 'Not reported',\n    annual_tuition_fee: money(r['latest.cost.tuition.out_of_state'] || r['latest.cost.tuition.in_state']),\n    avg_net_price: money(r['latest.cost.avg_net_price.overall']),\n    total_annual_cost: money(r['latest.cost.attendance.academic_year'])\n  });\n}\nreturn [{ json: { universities: picked, count: picked.length } }];"
+      },
+      "id": "c1c6a86a-2e47-428d-a99b-3ef2a6de87f7",
+      "name": "Shortlist Universities",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        48,
+        320
+      ]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=You are given a shortlist of REAL US universities (with official government facts already attached). Research scholarships, aid and admission details for each, for THIS student.\n\nStudent profile:\nTarget Program: {{ $('Lead Intake Form').item.json['Target Program'] }}\nLevel of Education: {{ $('Lead Intake Form').item.json['Level of Education'] }}\nGPA / CGPA: {{ $('Lead Intake Form').item.json['GPA / CGPA'] }}\nPercentage: {{ $('Lead Intake Form').item.json['Percentage'] }}\nAnnual Family Income: {{ $('Lead Intake Form').item.json['Annual Family Income'] }}\nSAT Score provided: {{ $('Lead Intake Form').item.json['SAT Score'] || 'None — student did NOT provide SAT' }}\nEnglish Proficiency Test: {{ $('Lead Intake Form').item.json['English Proficiency Test'] || 'None' }}\nEnglish Test Score: {{ $('Lead Intake Form').item.json['English Test Score'] || 'Not provided' }}\nApplying for Financial Aid/Scholarship: {{ $('Lead Intake Form').item.json['Applying for Financial Aid/Scholarship?'] }}\n\nUNIVERSITIES (JSON — research these exact schools, keep the same university_name):\n{{ JSON.stringify($json.universities) }}\n\nReturn one enrichment object per university in the same order.",
+        "hasOutputParser": true,
+        "options": {
+          "systemMessage": "You are a US university scholarships, financial-aid and admissions expert for a FREE consultancy (no fees are ever charged to the student). The universities are already chosen and their basic facts (location, website, size, acceptance rate, tuition, cost) are already known from official US Government data — do NOT re-research those. Your job is ONLY the things not in the government data: scholarships, aid, admission/program details, test policy and visa questions.\n\n*** WORK FAST ***\nUse the think tool to plan briefly, then act. Do NOT over-analyse or loop. One reliable source per fact is enough. Prefer targeted searches. Do not cross-check the same fact many times.\n\nSEARCH TOOLS — use them in THIS strict priority order:\n1. jina_reader_search — PRIMARY, highest priority. Use it FIRST for everything (scholarships, aid, deadlines, requirements, test policy).\n2. wikipedia_search — SECOND priority, only to quickly confirm a university detail when jina is not enough.\n3. google_search — LAST resort only; it is PAID (SerpApi), so avoid it unless jina and Wikipedia both fail on an important fact.\n\n*** SAT RULE (very important) ***\nThe student did NOT provide an SAT score, which means they do not have one. For each university confirm whether SAT is required for international applicants. Set sat_requirement to clearly say \"Test-optional — SAT not required\" OR \"SAT REQUIRED\". Do NOT recommend SAT-required schools — if a school clearly requires SAT, still return it but make sat_requirement say \"SAT REQUIRED\" so it can be filtered out.\n\nFor EACH university return these fields (grounded in real search results, prefer official .edu pages, put the URL in source_url):\n- program_availability: does it offer the target program? (Yes/No + short note)\n- admission_requirements: documents and scores needed\n- gpa_percentage_requirement: GPA/percentage needed vs the student\n- application_deadline: current cycle deadline (say which intake/year)\n- sat_requirement: \"Test-optional — SAT not required\" or \"SAT REQUIRED\"\n- english_test_requirement: TOEFL/IELTS/Duolingo minimums and any waiver\n- application_fee: the application fee amount (or \"waiver available\")\n- need_based_scholarship: aid based on the student family income (grants, need-based aid, CSS Profile)\n- merit_based_scholarship: aid based on GPA/percentage/scores (automatic + competitive)\n- international_financial_aid: is international financial aid available? (Yes/No + detail)\n- scholarship_tips: concrete actions to win the best aid at THIS university\n- estimated_out_of_pocket: realistic cost per year after expected scholarships\n- required_bank_balance: financial proof / bank balance needed\n- data_confidence: \"Verified from official source\" or \"Approximate — confirm on official site\"\n- university_specific_visa_prep: 2-3 F-1 visa-interview questions an officer would ask specifically because the student chose THIS university (why this school, what they know about its program/city), each with a strong sample answer using real facts.\n\nALSO return overall_target_bank_balance (total the student should keep available, based on the most affordable options after aid) and recommendation_summary (one paragraph, best-first ordering explained).\n\nONLY include universities that genuinely offer need-based OR merit scholarships suitable for this student; note if a school has no aid. Respond strictly in the required structured JSON format.",
+          "maxIterations": 18
+        }
+      },
+      "id": "fde24ed2-613f-4ed2-9b38-7199b7fbaffb",
+      "name": "Scholarships & Aid Agent",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        256,
+        448
+      ]
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "gpt-5-nano",
+          "mode": "list",
+          "cachedResultName": "gpt-5-nano"
+        },
+        "responsesApiEnabled": false,
+        "options": {
+          "reasoningEffort": "low"
+        }
+      },
+      "id": "fbc30400-7820-468a-b748-6d7035786be0",
+      "name": "Scholarship Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        -80,
+        672
+      ],
+      "credentials": {
+        "openAiApi": {
+          "id": "obqKeUNFfIczth8M",
+          "name": "OpenAI account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "description": "Use this to quickly plan your next search or organise findings. Think briefly and fast — do not over-analyse. It does not fetch data."
+      },
+      "id": "e31e4679-3f5c-4231-96a1-b54fd0a28ca2",
+      "name": "think",
+      "type": "@n8n/n8n-nodes-langchain.toolThink",
+      "typeVersion": 1.1,
+      "position": [
+        32,
+        672
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "search",
+        "searchQuery": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('searchQuery', 'The web search query, using specific terms including the university name') }}",
+        "options": {
+          "outputFormat": "markdown"
+        },
+        "requestOptions": {}
+      },
+      "id": "04872e1f-cd97-4294-89b1-b9682adc9b8e",
+      "name": "jina_reader_search",
+      "type": "n8n-nodes-base.jinaAiTool",
+      "typeVersion": 1,
+      "position": [
+        192,
+        656
+      ],
+      "credentials": {
+        "jinaAiApi": {
+          "id": "SGCj0xQ9EQE34gR1",
+          "name": "Jina AI account"
+        }
+      }
+    },
+    {
+      "parameters": {},
+      "id": "9ce9dac7-dde3-4654-bdf7-0a29fb563c55",
+      "name": "wikipedia_search",
+      "type": "@n8n/n8n-nodes-langchain.toolWikipedia",
+      "typeVersion": 1,
+      "position": [
+        352,
+        656
+      ]
+    },
+    {
+      "parameters": {
+        "options": {
+          "gl": "us",
+          "hl": "en"
+        }
+      },
+      "id": "44263749-2d55-41da-ab83-c1b8996cfa3b",
+      "name": "google_search",
+      "type": "@n8n/n8n-nodes-langchain.toolSerpApi",
+      "typeVersion": 1,
+      "position": [
+        512,
+        656
+      ],
+      "credentials": {
+        "serpApi": {
+          "id": "kTIUPRUUXdcaGBtp",
+          "name": "SerpAPI account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsonSchemaExample": "{\"enrichments\":[{\"university_name\":\"Example State University\",\"program_availability\":\"Yes — offers MS in Computer Science\",\"admission_requirements\":\"Transcripts, SOP, 2 LORs; TOEFL 80 or IELTS 6.5\",\"gpa_percentage_requirement\":\"Minimum GPA ~3.0/4.0 (approx 75%)\",\"application_deadline\":\"January 15, 2026 (Fall 2026 intake)\",\"sat_requirement\":\"Test-optional — SAT not required for international students\",\"english_test_requirement\":\"TOEFL 80 / IELTS 6.5; waiver if prior study in English\",\"application_fee\":\"USD 65\",\"need_based_scholarship\":\"Need-based grant up to USD 10,000/year for low-income international students\",\"merit_based_scholarship\":\"Merit scholarship up to USD 12,000/year for GPA 3.5+\",\"international_financial_aid\":\"Yes — international students eligible for departmental aid and assistantships\",\"scholarship_tips\":\"Apply early, strong SOP, 2-3 LORs, contact the department for assistantships\",\"estimated_out_of_pocket\":\"USD 8,000-10,000/year after scholarships\",\"required_bank_balance\":\"USD 30,000 financial proof for the first year\",\"source_url\":\"https://www.example.edu/admissions\",\"data_confidence\":\"Verified from official source\",\"university_specific_visa_prep\":[{\"question\":\"Why did you choose Example State University?\",\"sample_answer\":\"I chose it for its strong CS department and affordable cost of living.\"},{\"question\":\"What do you know about the campus?\",\"sample_answer\":\"It is a mid-sized public research university known for engineering.\"}]}],\"recommendation_summary\":\"Ordered best-first: highest aid and lowest net cost at the top.\",\"overall_target_bank_balance\":\"USD 30,000 based on the most affordable recommended universities after scholarships.\"}",
+        "autoFix": true
+      },
+      "id": "161267de-2e2a-4348-8296-ec37acbf611e",
+      "name": "Scholarship Parser",
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "typeVersion": 1.3,
+      "position": [
+        656,
+        672
+      ]
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "gpt-5-nano",
+          "mode": "list",
+          "cachedResultName": "gpt-5-nano"
+        },
+        "responsesApiEnabled": false,
+        "options": {
+          "reasoningEffort": "low"
+        }
+      },
+      "id": "3b8dae79-95e1-4915-8f72-a4d24962b35e",
+      "name": "Parser Fix Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        656,
+        864
+      ],
+      "credentials": {
+        "openAiApi": {
+          "id": "obqKeUNFfIczth8M",
+          "name": "OpenAI account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineByPosition",
+        "options": {}
+      },
+      "id": "4ef80c7b-299f-48da-bea4-8139280f7894",
+      "name": "Wait for Both Agents",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        768,
+        224
+      ]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Write clear, complete, beginner-friendly guides for an international student applying to US universities.\n\nTarget Program: {{ $('Lead Intake Form').item.json['Target Program'] }}\nLevel of Education: {{ $('Lead Intake Form').item.json['Level of Education'] }}\nEnglish Proficiency Test: {{ $('Lead Intake Form').item.json['English Proficiency Test'] || 'None' }}\n\nProduce application_guide, visa_guide and visa_interview_prep. Respond strictly in the required structured JSON format.",
+        "hasOutputParser": true,
+        "options": {
+          "systemMessage": "You are a US study-abroad and F-1 student-visa expert for a FREE consultancy. Work FAST: use the think tool to outline briefly, then write. You do NOT research specific universities — that is handled by another module. Write from your general expert knowledge.\n\nProduce exactly three fields, each a complete numbered step-by-step guide someone with ZERO prior knowledge can follow:\n1. application_guide — the whole US application process from start to finish (documents, standardized and English tests, SOP, LORs, submitting applications, fees, tracking decisions).\n2. visa_guide — the full US F-1 student visa journey from scratch (getting the I-20 after admission, paying the SEVIS I-901 fee, completing the DS-160, paying the visa fee, booking the interview, required documents, timeline, at the consulate).\n3. visa_interview_prep — general F-1 interview preparation: common questions with strong sample answers, how to prove financial capability and ties to home country, documents to carry, and key dos, donts and mistakes to avoid.\n\nRespond strictly in the required structured JSON format.",
+          "maxIterations": 4
+        }
+      },
+      "id": "9c76fb11-e178-44ef-afa4-8a9b2ee1f0a9",
+      "name": "Visa Guide Agent",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        224,
+        48
+      ]
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "gpt-5-nano",
+          "mode": "list",
+          "cachedResultName": "gpt-5-nano"
+        },
+        "responsesApiEnabled": false,
+        "options": {
+          "reasoningEffort": "low"
+        }
+      },
+      "id": "3403ba82-5dc4-43b3-909e-901d2ce21a6d",
+      "name": "Visa Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        224,
+        320
+      ],
+      "credentials": {
+        "openAiApi": {
+          "id": "obqKeUNFfIczth8M",
+          "name": "OpenAI account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsonSchemaExample": "{\"application_guide\":\"Numbered step-by-step guide to applying: preparing documents (transcripts, SOP, LORs, resume), taking or waiving standardized and English tests, filling applications, paying fees, and tracking decisions.\",\"visa_guide\":\"Numbered step-by-step US F-1 student visa guide from scratch: getting the I-20 after admission, paying the SEVIS I-901 fee, completing the DS-160, paying the visa fee, booking the interview, required documents, and timeline.\",\"visa_interview_prep\":\"General F-1 visa interview preparation: common questions with strong sample answers, how to prove financial capability and ties to home country, documents to carry, and key dos, donts and mistakes to avoid.\"}"
+      },
+      "id": "d927486a-a0bd-49fa-adff-24fac777e44b",
+      "name": "Visa Parser",
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "typeVersion": 1.3,
+      "position": [
+        368,
+        304
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const facts = (($('Shortlist Universities').first().json || {}).universities) || [];\nconst sch = (($('Scholarships & Aid Agent').first().json || {}).output) || {};\nconst guides = (($('Visa Guide Agent').first().json || {}).output) || {};\nconst enr = Array.isArray(sch.enrichments) ? sch.enrichments : [];\nfunction norm(s){ return String(s || '').toLowerCase().replace(/[^a-z0-9]/g, ''); }\nfunction findEnr(name){ for (let i=0;i<enr.length;i++){ if (norm(enr[i].university_name) === norm(name)) return enr[i]; } return {}; }\nlet universities = facts.map(function(f){\n  const e = findEnr(f.university_name) || {};\n  return {\n    university_name: f.university_name,\n    location: f.location, city: f.city, state: f.state, website: f.website,\n    student_count: f.student_count, acceptance_rate: f.acceptance_rate,\n    annual_tuition_fee: f.annual_tuition_fee, avg_net_price: f.avg_net_price, total_annual_cost: f.total_annual_cost,\n    program_availability: e.program_availability || '',\n    admission_requirements: e.admission_requirements || '',\n    gpa_percentage_requirement: e.gpa_percentage_requirement || '',\n    application_deadline: e.application_deadline || '',\n    sat_requirement: e.sat_requirement || '',\n    english_test_requirement: e.english_test_requirement || '',\n    application_fee: e.application_fee || '',\n    need_based_scholarship: e.need_based_scholarship || '',\n    merit_based_scholarship: e.merit_based_scholarship || '',\n    international_financial_aid: e.international_financial_aid || '',\n    scholarship_tips: e.scholarship_tips || '',\n    estimated_out_of_pocket: e.estimated_out_of_pocket || '',\n    required_bank_balance: e.required_bank_balance || '',\n    source_url: e.source_url || f.website || '',\n    data_confidence: e.data_confidence || '',\n    university_specific_visa_prep: Array.isArray(e.university_specific_visa_prep) ? e.university_specific_visa_prep : []\n  };\n});\n// Drop SAT-required schools (student has no SAT)\nconst noSat = universities.filter(function(u){ return !/sat required/i.test(u.sat_requirement || ''); });\nif (noSat.length > 0) universities = noSat;\nreturn [{ json: { output: {\n  universities: universities,\n  overall_target_bank_balance: sch.overall_target_bank_balance || '',\n  recommendation_summary: sch.recommendation_summary || '',\n  application_guide: guides.application_guide || '',\n  visa_guide: guides.visa_guide || '',\n  visa_interview_prep: guides.visa_interview_prep || ''\n} } }];"
+      },
+      "id": "b519c81c-c3aa-4630-8240-02f0defc7bd0",
+      "name": "Combine Research",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        976,
+        224
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ Array.isArray($json.output && $json.output.universities) ? $json.output.universities.length : 0 }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              },
+              "id": "8554d80b-93eb-4c7c-8752-59466a3ddc37"
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "7dd4c0ac-c71c-400f-9b68-4241e91a71fc",
+      "name": "Got Valid Matches?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1152,
+        224
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const agentOut = $input.first().json.output || {};\nconst form = $('Lead Intake Form').first().json;\nconst unis = Array.isArray(agentOut.universities) ? agentOut.universities : [];\nconst now = new Date().toISOString();\nreturn unis.map(function (u, i) {\n  u = u || {};\n  const visaQA = Array.isArray(u.university_specific_visa_prep) ? u.university_specific_visa_prep : [];\n  return { json: {\n    submitted_at: now,\n    full_name: form['Full Name'] || '',\n    email: form['Email'] || '',\n    phone: form['Phone Number'] || '',\n    education_level: form['Level of Education'] || '',\n    target_program: form['Target Program'] || '',\n    gpa_cgpa: form['GPA / CGPA'] || '',\n    percentage: form['Percentage'] || '',\n    annual_family_income: form['Annual Family Income'] || '',\n    budget_range: form['Budget Range'] || '',\n    financial_aid_requested: form['Applying for Financial Aid/Scholarship?'] || '',\n    rank: i + 1,\n    matched_university: u.university_name || '',\n    location: u.location || '',\n    website: u.website || '',\n    student_count: u.student_count || '',\n    acceptance_rate: u.acceptance_rate || '',\n    sat_requirement: u.sat_requirement || '',\n    english_test_requirement: u.english_test_requirement || '',\n    program_availability: u.program_availability || '',\n    gpa_percentage_requirement: u.gpa_percentage_requirement || '',\n    application_deadline: u.application_deadline || '',\n    admission_requirements: u.admission_requirements || '',\n    annual_tuition_fee: u.annual_tuition_fee || '',\n    avg_net_price: u.avg_net_price || '',\n    total_annual_cost: u.total_annual_cost || '',\n    application_fee: u.application_fee || '',\n    need_based_scholarship: u.need_based_scholarship || '',\n    merit_based_scholarship: u.merit_based_scholarship || '',\n    international_financial_aid: u.international_financial_aid || '',\n    scholarship_tips: u.scholarship_tips || '',\n    estimated_out_of_pocket: u.estimated_out_of_pocket || '',\n    required_bank_balance: u.required_bank_balance || '',\n    overall_target_bank_balance: agentOut.overall_target_bank_balance || '',\n    university_specific_visa_qa: visaQA.map(function(q){ return (q.question || '') + ' => ' + (q.sample_answer || ''); }).join(' | '),\n    source_url: u.source_url || '',\n    data_confidence: u.data_confidence || ''\n  } };\n});"
+      },
+      "id": "f18f583f-d1ab-48d9-9631-d8f26cc65379",
+      "name": "Format University Rows",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1472,
+        -16
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "appendOrUpdate",
+        "documentId": {
+          "__rl": true,
+          "value": "1wBKvae-N-pN_IhB5KlXOPhdlUBaffuG6LH7m3IJoRwE",
+          "mode": "list",
+          "cachedResultName": "USA universities ",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1wBKvae-N-pN_IhB5KlXOPhdlUBaffuG6LH7m3IJoRwE/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Sheet1",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1wBKvae-N-pN_IhB5KlXOPhdlUBaffuG6LH7m3IJoRwE/edit#gid=0"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "matched_university": "={{ $json.matched_university }}",
+            "location": "={{ $json.location }}",
+            "website": "={{ $json.website }}",
+            "student_count": "={{ $json.student_count }}",
+            "acceptance_rate": "={{ $json.acceptance_rate }}",
+            "sat_requirement": "={{ $json.sat_requirement }}",
+            "english_test_requirement": "={{ $json.english_test_requirement }}",
+            "program_availability": "={{ $json.program_availability }}",
+            "gpa_percentage_requirement": "={{ $json.gpa_percentage_requirement }}",
+            "application_deadline": "={{ $json.application_deadline }}",
+            "admission_requirements": "={{ $json.admission_requirements }}",
+            "annual_tuition_fee": "={{ $json.annual_tuition_fee }}",
+            "avg_net_price": "={{ $json.avg_net_price }}",
+            "total_annual_cost": "={{ $json.total_annual_cost }}",
+            "application_fee": "={{ $json.application_fee }}",
+            "need_based_scholarship": "={{ $json.need_based_scholarship }}",
+            "merit_based_scholarship": "={{ $json.merit_based_scholarship }}",
+            "international_financial_aid": "={{ $json.international_financial_aid }}",
+            "scholarship_tips": "={{ $json.scholarship_tips }}",
+            "estimated_out_of_pocket": "={{ $json.estimated_out_of_pocket }}",
+            "required_bank_balance": "={{ $json.required_bank_balance }}",
+            "overall_target_bank_balance": "={{ $json.overall_target_bank_balance }}",
+            "university_specific_visa_qa": "={{ $json.university_specific_visa_qa }}",
+            "source_url": "={{ $json.source_url }}",
+            "data_confidence": "={{ $json.data_confidence }}"
+          },
+          "matchingColumns": [
+            "matched_university"
+          ],
+          "schema": [
+            {
+              "id": "matched_university",
+              "displayName": "matched_university",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "location",
+              "displayName": "location",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "website",
+              "displayName": "website",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "student_count",
+              "displayName": "student_count",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "acceptance_rate",
+              "displayName": "acceptance_rate",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "sat_requirement",
+              "displayName": "sat_requirement",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "english_test_requirement",
+              "displayName": "english_test_requirement",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "program_availability",
+              "displayName": "program_availability",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "gpa_percentage_requirement",
+              "displayName": "gpa_percentage_requirement",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "application_deadline",
+              "displayName": "application_deadline",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "admission_requirements",
+              "displayName": "admission_requirements",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "annual_tuition_fee",
+              "displayName": "annual_tuition_fee",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "avg_net_price",
+              "displayName": "avg_net_price",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "total_annual_cost",
+              "displayName": "total_annual_cost",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "application_fee",
+              "displayName": "application_fee",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "need_based_scholarship",
+              "displayName": "need_based_scholarship",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "merit_based_scholarship",
+              "displayName": "merit_based_scholarship",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "international_financial_aid",
+              "displayName": "international_financial_aid",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "scholarship_tips",
+              "displayName": "scholarship_tips",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "estimated_out_of_pocket",
+              "displayName": "estimated_out_of_pocket",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "required_bank_balance",
+              "displayName": "required_bank_balance",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "overall_target_bank_balance",
+              "displayName": "overall_target_bank_balance",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "university_specific_visa_qa",
+              "displayName": "university_specific_visa_qa",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "source_url",
+              "displayName": "source_url",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "data_confidence",
+              "displayName": "data_confidence",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "id": "ba8524d5-e207-4468-8244-db1fb34da37b",
+      "name": "Log Universities Tab",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        1744,
+        96
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "z6k5saodsh5LDR62",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const agentOut = $input.first().json.output || {};\nconst form = $('Lead Intake Form').first().json;\nconst unis = Array.isArray(agentOut.universities) ? agentOut.universities : [];\nconst now = new Date().toISOString();\nconst appG = agentOut.application_guide || '';\nconst visaG = agentOut.visa_guide || '';\nconst prep = agentOut.visa_interview_prep || '';\nif (!unis.length) {\n  return [{ json: { submitted_at: now, full_name: form['Full Name'] || '', email: form['Email'] || '', rank: '', matched_university: '', location: '', university_specific_visa_qa: '', application_guide: appG, visa_guide: visaG, visa_interview_prep: prep } }];\n}\nreturn unis.map(function (u, i) {\n  u = u || {};\n  const visaQA = Array.isArray(u.university_specific_visa_prep) ? u.university_specific_visa_prep : [];\n  return { json: {\n    submitted_at: now,\n    full_name: form['Full Name'] || '',\n    email: form['Email'] || '',\n    rank: i + 1,\n    matched_university: u.university_name || '',\n    location: u.location || '',\n    university_specific_visa_qa: visaQA.map(function(q){ return 'Q: ' + (q.question || '') + ' | A: ' + (q.sample_answer || ''); }).join('  ||  '),\n    application_guide: appG,\n    visa_guide: visaG,\n    visa_interview_prep: prep\n  } };\n});"
+      },
+      "id": "84061b74-c5a5-421c-bb15-25dc2222cd39",
+      "name": "Format Visa Rows",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1472,
+        192
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "1wBKvae-N-pN_IhB5KlXOPhdlUBaffuG6LH7m3IJoRwE",
+          "mode": "list",
+          "cachedResultName": "USA universities ",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1wBKvae-N-pN_IhB5KlXOPhdlUBaffuG6LH7m3IJoRwE/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 488652235,
+          "mode": "list",
+          "cachedResultName": "Visa Guide",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1wBKvae-N-pN_IhB5KlXOPhdlUBaffuG6LH7m3IJoRwE/edit#gid=488652235"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "submitted_at": "={{ $json.submitted_at }}",
+            "full_name": "={{ $json.full_name }}",
+            "email": "={{ $json.email }}",
+            "rank": "={{ $json.rank }}",
+            "matched_university": "={{ $json.matched_university }}",
+            "location": "={{ $json.location }}",
+            "University specific visa question": "={{ $json.university_specific_visa_qa }}",
+            "application_guide": "={{ $json.application_guide }}",
+            "visa_guide": "={{ $json.visa_guide }}",
+            "visa_interview_prep": "={{ $json.visa_interview_prep }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "submitted_at",
+              "displayName": "submitted_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "full_name",
+              "displayName": "full_name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "email",
+              "displayName": "email",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "rank",
+              "displayName": "rank",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "matched_university",
+              "displayName": "matched_university",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "location",
+              "displayName": "location",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "University specific visa question",
+              "displayName": "University specific visa question",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "application_guide",
+              "displayName": "application_guide",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "visa_guide",
+              "displayName": "visa_guide",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "visa_interview_prep",
+              "displayName": "visa_interview_prep",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "id": "2fb820e2-68e8-4084-b338-278ddd14f585",
+      "name": "Log Visa Guide Tab",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        1728,
+        320
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "z6k5saodsh5LDR62",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const agentOut = $input.first().json.output || {};\nconst form = $('Lead Intake Form').first().json;\nconst unis = Array.isArray(agentOut.universities) ? agentOut.universities : [];\nlet rows = '';\nfor (let i = 0; i < unis.length; i++) {\n  const u = unis[i] || {};\n  rows += '<h3>' + (i + 1) + '. ' + (u.university_name || 'University') + '</h3>';\n  rows += '<ul>';\n  rows += '<li><b>Location:</b> ' + (u.location || 'N/A') + '</li>';\n  rows += '<li><b>Website:</b> ' + (u.website ? ('<a href=\"' + u.website + '\">' + u.website + '</a>') : 'N/A') + '</li>';\n  rows += '<li><b>Number of Students:</b> ' + (u.student_count || 'N/A') + '</li>';\n  rows += '<li><b>Acceptance Rate:</b> ' + (u.acceptance_rate || 'N/A') + '</li>';\n  rows += '<li><b>Program:</b> ' + (u.program_availability || 'N/A') + '</li>';\n  rows += '<li><b>GPA / Percentage Requirement:</b> ' + (u.gpa_percentage_requirement || 'N/A') + '</li>';\n  rows += '<li><b>SAT Requirement:</b> ' + (u.sat_requirement || 'N/A') + '</li>';\n  rows += '<li><b>English Test Requirement:</b> ' + (u.english_test_requirement || 'N/A') + '</li>';\n  rows += '<li><b>Application Deadline:</b> ' + (u.application_deadline || 'N/A') + '</li>';\n  rows += '<li><b>Application Fee:</b> ' + (u.application_fee || 'N/A') + '</li>';\n  rows += '<li><b>Annual Tuition Fee:</b> ' + (u.annual_tuition_fee || 'N/A') + '</li>';\n  rows += '<li><b>Average Net Price:</b> ' + (u.avg_net_price || 'N/A') + '</li>';\n  rows += '<li><b>Total Annual Cost:</b> ' + (u.total_annual_cost || 'N/A') + '</li>';\n  rows += '<li><b>Need-Based Scholarship:</b> ' + (u.need_based_scholarship || 'N/A') + '</li>';\n  rows += '<li><b>Merit-Based Scholarship:</b> ' + (u.merit_based_scholarship || 'N/A') + '</li>';\n  rows += '<li><b>International Financial Aid:</b> ' + (u.international_financial_aid || 'N/A') + '</li>';\n  rows += '<li><b>How to Win the Best Scholarships:</b> ' + (u.scholarship_tips || 'N/A') + '</li>';\n  rows += '<li><b>Estimated Out-of-Pocket (after aid):</b> ' + (u.estimated_out_of_pocket || 'N/A') + '</li>';\n  rows += '<li><b>Required Bank Balance / Financial Proof:</b> ' + (u.required_bank_balance || 'N/A') + '</li>';\n  const visaQA = Array.isArray(u.university_specific_visa_prep) ? u.university_specific_visa_prep : [];\n  if (visaQA.length) {\n    rows += '<li><b>Visa interview — questions specific to this university:</b><ul>';\n    for (let q = 0; q < visaQA.length; q++) {\n      rows += '<li><i>Q: ' + (visaQA[q].question || '') + '</i><br>A: ' + (visaQA[q].sample_answer || '') + '</li>';\n    }\n    rows += '</ul></li>';\n  }\n  if (u.source_url) { rows += '<li><b>Source:</b> <a href=\"' + u.source_url + '\">' + u.source_url + '</a> (' + (u.data_confidence || 'confirm on official site') + ')</li>'; }\n  rows += '</ul>';\n}\nif (!rows) { rows = '<p>We could not find strong matches automatically. Our counseling team will review your profile and follow up personally, free of charge.</p>'; }\nfunction textToHtml(t) {\n  if (!t) return '<p>Our team will share this with you shortly.</p>';\n  var parts = String(t).split(String.fromCharCode(10) + String.fromCharCode(10));\n  var out = '';\n  for (var p = 0; p < parts.length; p++) {\n    out += '<p>' + parts[p].split(String.fromCharCode(10)).join('<br>') + '</p>';\n  }\n  return out;\n}\nlet html = '<p>Dear ' + (form['Full Name'] || 'Student') + ',</p>';\nhtml += '<p>This is a completely free service — no consultancy fees, ever. Based on your profile, here is your personalised shortlist of US universities for <b>' + (form['Target Program'] || 'your target program') + '</b>, ordered best-first — the most affordable options with the highest scholarships and financial aid appear at the top. University facts below come from official US Government (College Scorecard) data.</p>';\nif (agentOut.overall_target_bank_balance) {\n  html += '<p style=\"padding:10px;background:#f2f7ff;border-left:4px solid #2b6cb0;\"><b>Your target bank balance:</b> ' + agentOut.overall_target_bank_balance + '</p>';\n}\nif (agentOut.recommendation_summary) {\n  html += textToHtml(agentOut.recommendation_summary);\n}\nhtml += '<h2>1. Your Matched Universities (best-first)</h2>';\nhtml += rows;\nhtml += '<h2>2. How to Apply — Step by Step</h2>';\nhtml += textToHtml(agentOut.application_guide);\nhtml += '<h2>3. US Student Visa (F-1) — Complete Guide</h2>';\nhtml += textToHtml(agentOut.visa_guide);\nhtml += '<h2>4. Visa Interview Preparation (General)</h2>';\nhtml += textToHtml(agentOut.visa_interview_prep);\nhtml += '<h2>Your Next Steps</h2>';\nhtml += '<ol>';\nhtml += '<li>Review each university deadline and admission requirement.</li>';\nhtml += '<li>Prepare your financial documents, including the required bank statement.</li>';\nhtml += '<li>Follow the application guide above to submit your applications.</li>';\nhtml += '<li>Once admitted, follow the visa guide and interview preparation, including the university-specific questions above.</li>';\nhtml += '<li>Reply to this email to book a free counseling session with our team.</li>';\nhtml += '</ol>';\nhtml += '<p style=\"font-size:12px;color:#666;border-top:1px solid #ddd;padding-top:8px;\"><b>Important:</b> Deadlines, tuition, and scholarship amounts change every year. Please always confirm the figures above on each university\\'s official website and on the official US government sites (studyinthestates.dhs.gov and travel.state.gov) before making any decision or payment.</p>';\nhtml += '<p>Best regards,<br>US University Education Consultancy</p>';\nreturn [{ json: { summary_html: html, student_email: form['Email'] || '', student_name: form['Full Name'] || '', match_count: unis.length } }];"
+      },
+      "id": "14d94003-eac9-422f-8b4c-01f633bdc69d",
+      "name": "Build Student Summary",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1472,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $json.student_email }}",
+        "subject": "Your Matched US Universities & Next Steps (Free Consultancy)",
+        "message": "={{ $json.summary_html }}",
+        "options": {}
+      },
+      "id": "4869d182-46e0-4cea-80e6-797443fad5a3",
+      "name": "Send Match Summary",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        1760,
+        528
+      ],
+      "webhookId": "633b1fea-6b2b-454c-88a0-e2dd4e9bd0b9",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "kXwCYiBFxjxUw9Sm",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $('Lead Intake Form').first().json.Email }}",
+        "subject": "We're Still Working On Your University Matches",
+        "message": "=Dear {{ $('Lead Intake Form').first().json['Full Name'] }},<br><br>Thank you for your patience. Our automated search wasn't able to confidently verify strong university matches for your profile on the first pass. This can happen with unusual program/budget combinations.<br><br>Our team will review your profile personally and follow up within 1-2 business days — this remains completely free of charge.<br><br>Best regards,<br>US University Education Consultancy",
+        "options": {}
+      },
+      "id": "5126577d-f0b9-4956-aedd-786e3bffce7e",
+      "name": "Send Manual Review Notice",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        1472,
+        576
+      ],
+      "webhookId": "f8bd9c1e-92af-4b8d-b1d3-99c8cd179738",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "kXwCYiBFxjxUw9Sm",
+          "name": "Gmail account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Lead Intake Form": {
+      "main": [
+        [
+          {
+            "node": "Check Required Fields",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Required Fields": {
+      "main": [
+        [
+          {
+            "node": "Has Missing Fields?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Missing Fields?": {
+      "main": [
+        [
+          {
+            "node": "Request Missing Info",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Route by Education Level",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route by Education Level": {
+      "main": [
+        [
+          {
+            "node": "Send Rejection (10th)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Request Documents (11th)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Build Scorecard Query",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Scorecard Query": {
+      "main": [
+        [
+          {
+            "node": "Fetch Universities (US Gov API)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Universities (US Gov API)": {
+      "main": [
+        [
+          {
+            "node": "Shortlist Universities",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Shortlist Universities": {
+      "main": [
+        [
+          {
+            "node": "Scholarships & Aid Agent",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Visa Guide Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Scholarships & Aid Agent": {
+      "main": [
+        [
+          {
+            "node": "Wait for Both Agents",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Scholarship Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Scholarships & Aid Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "think": {
+      "ai_tool": [
+        [
+          {
+            "node": "Scholarships & Aid Agent",
+            "type": "ai_tool",
+            "index": 0
+          },
+          {
+            "node": "Visa Guide Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "jina_reader_search": {
+      "ai_tool": [
+        [
+          {
+            "node": "Scholarships & Aid Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "wikipedia_search": {
+      "ai_tool": [
+        [
+          {
+            "node": "Scholarships & Aid Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "google_search": {
+      "ai_tool": [
+        [
+          {
+            "node": "Scholarships & Aid Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Scholarship Parser": {
+      "ai_outputParser": [
+        [
+          {
+            "node": "Scholarships & Aid Agent",
+            "type": "ai_outputParser",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parser Fix Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Scholarship Parser",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait for Both Agents": {
+      "main": [
+        [
+          {
+            "node": "Combine Research",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Visa Guide Agent": {
+      "main": [
+        [
+          {
+            "node": "Wait for Both Agents",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Visa Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Visa Guide Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Visa Parser": {
+      "ai_outputParser": [
+        [
+          {
+            "node": "Visa Guide Agent",
+            "type": "ai_outputParser",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Combine Research": {
+      "main": [
+        [
+          {
+            "node": "Got Valid Matches?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Got Valid Matches?": {
+      "main": [
+        [
+          {
+            "node": "Format University Rows",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Format Visa Rows",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Build Student Summary",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Send Manual Review Notice",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format University Rows": {
+      "main": [
+        [
+          {
+            "node": "Log Universities Tab",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Visa Rows": {
+      "main": [
+        [
+          {
+            "node": "Log Visa Guide Tab",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Student Summary": {
+      "main": [
+        [
+          {
+            "node": "Send Match Summary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "6dd53495-2afb-4e3c-8665-33b28d564eab",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "ecaa6a2c79d1db74b9b605baffd910b2cbd8105d991ba1587b4ac728ac3fa167"
+  },
+  "nodeGroups": [],
+  "id": "51rCR9l0GHrF6N4Q",
+  "tags": []
+}
